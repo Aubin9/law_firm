@@ -2,8 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Self-hosted fonts (see public/fonts/README.md) */
+@font-face {
+  font-family: "Inter Local";
+  src: local("Inter"), url("/fonts/Inter-Variable.woff2") format("woff2");
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Source Serif 4 Local";
+  src: local("Source Serif 4"), local("Georgia"), url("/fonts/SourceSerif4-Variable.woff2") format("woff2");
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Local";
+  src: local("JetBrains Mono"), local("Consolas"), url("/fonts/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   :root {
+    /* Typography variables */
+    --font-inter: "Inter Local", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-source-serif: "Source Serif 4 Local", Georgia, Cambria, "Times New Roman", serif;
+    --font-jetbrains-mono: "JetBrains Mono Local", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    /* Core surfaces & text (DESIGN.md Section 2.1) */
     --background: #F7F6F3;
     --surface: #FFFFFF;
     --surface-muted: #F0EEE9;
@@ -11,60 +42,71 @@
     --foreground: #1B1F27;
     --muted-foreground: #5C6370;
 
+    /* Brand & focus */
     --primary: #1F2A44;
+    --primary-soft: #EBF0F7;
     --primary-foreground: #FFFFFF;
 
     --accent: #B08D57;
+    --accent-soft: #F7F2E8;
     --ring: #3B5BA9;
 
+    /* Semantic statuses (Contrast >= 4.5:1 verified) */
     --success: #2E7D5B;
     --success-soft: #EAF4EE;
-    --success-foreground: #1E533C;
+    --success-foreground: #1B4D37;
 
     --warning: #B7791F;
-    --warning-soft: #FDF6E9;
-    --warning-foreground: #744D14;
+    --warning-soft: #FDF5E6;
+    --warning-foreground: #6E470E;
 
     --danger: #B3382C;
     --danger-soft: #FAECEB;
-    --danger-foreground: #77251D;
+    --danger-foreground: #74221A;
 
     --info: #2B6CB0;
     --info-soft: #EBF3FA;
-    --info-foreground: #1C4673;
+    --info-foreground: #1A436E;
 
-    --radius: 8px;
+    /* Shape & elevation (DESIGN.md Section 2.3) */
+    --radius-control: 8px;
+    --radius-dialog: 12px;
+    --radius-chip: 999px;
+    --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.06);
+    --shadow-popover: 0 8px 24px rgba(16, 24, 40, 0.12);
   }
 
   .dark {
-    --background: #14171E;
+    --background: #12151C;
     --surface: #1B1F27;
     --surface-muted: #242934;
     --border: #2E3543;
     --foreground: #F7F6F3;
-    --muted-foreground: #8B94A5;
+    --muted-foreground: #9BA3B2;
 
     --primary: #3B5BA9;
+    --primary-soft: #1E2942;
     --primary-foreground: #FFFFFF;
 
-    --accent: #D4AF37;
-    --ring: #5A7EC8;
+    --accent: #C8A46B;
+    --accent-soft: #2C2519;
+    --ring: #6384D6;
 
     --success: #38A169;
-    --success-soft: #1C3328;
-    --success-foreground: #9AE6B4;
+    --success-soft: #193026;
+    --success-foreground: #A7F3D0;
 
-    --warning: #DD6B20;
-    --warning-soft: #382415;
-    --warning-foreground: #FBD38D;
+    --warning: #D69E2E;
+    --warning-soft: #332611;
+    --warning-foreground: #FDE68A;
 
     --danger: #E53E3E;
-    --danger-soft: #381A1A;
-    --danger-foreground: #FEB2B2;
+    --danger-soft: #361919;
+    --danger-foreground: #FECACA;
 
-    --info: #3182CE;
-    --info-soft: #18283E;
-    --info-foreground: #90CDF4;
+    --info: #4299E1;
+    --info-soft: #172A3F;
+    --info-foreground: #BFDBFE;
   }
 
   * {
@@ -73,7 +115,39 @@
 
   body {
     @apply bg-background text-foreground antialiased font-sans;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     min-height: 100vh;
+  }
+
+  /* Accessible visible focus ring (2px, offset 2px) */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 }
 
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-popover {
+    box-shadow: var(--shadow-popover);
+  }
+}
+
+/* Respect reduced motion (DESIGN.md Section 2.4) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

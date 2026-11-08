@@ -1,3 +1,15 @@
-// App components export barrel (shell, DataTable, KanbanBoard, StatusChip, etc.)
-export {};
-
+export * from "./status-chip";
+export * from "./priority-chip";
+export * from "./confidentiality-chip";
+export * from "./page-header";
+export * from "./empty-state";
+export * from "./error-state";
+export * from "./denied-state";
+export * from "./confirm-dialog";
+export * from "./side-panel";
+export * from "./entity-combobox";
+export * from "./date-time-field";
+export * from "./money-cell";
+export * from "./form-section";
+export * from "./data-table";
+export * from "./app-shell";

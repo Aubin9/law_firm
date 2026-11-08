@@ -12,7 +12,7 @@ const config: Config = {
       center: true,
       padding: "2rem",
       screens: {
-        "2xl": "1400px",
+        "2xl": "1280px",
       },
     },
     extend: {
@@ -28,6 +28,7 @@ const config: Config = {
         },
         primary: {
           DEFAULT: "var(--primary)",
+          soft: "var(--primary-soft)",
           foreground: "var(--primary-foreground)",
         },
         secondary: {
@@ -40,6 +41,7 @@ const config: Config = {
         },
         accent: {
           DEFAULT: "var(--accent)",
+          soft: "var(--accent-soft)",
           foreground: "var(--primary-foreground)",
         },
         success: {
@@ -68,24 +70,31 @@ const config: Config = {
         serif: ["var(--font-source-serif)", "serif"],
         mono: ["var(--font-jetbrains-mono)", "monospace"],
       },
+      fontSize: {
+        caption: ["0.75rem", { lineHeight: "1.5" }],
+        "body-sm": ["0.875rem", { lineHeight: "1.5" }],
+        body: ["1rem", { lineHeight: "1.5" }],
+        lead: ["1.125rem", { lineHeight: "1.5" }],
+        h3: ["1.25rem", { lineHeight: "1.25" }],
+        h2: ["1.5rem", { lineHeight: "1.25" }],
+        h1: ["1.875rem", { lineHeight: "1.25" }],
+      },
       borderRadius: {
-        lg: "8px",
+        dialog: "var(--radius-dialog)",
+        lg: "var(--radius-control)",
         md: "6px",
         sm: "4px",
+        chip: "var(--radius-chip)",
       },
-      keyframes: {
-        "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
-        },
-        "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
-        },
+      boxShadow: {
+        card: "var(--shadow-card)",
+        popover: "var(--shadow-popover)",
       },
-      animation: {
-        "accordion-down": "accordion-down 0.2s ease-out",
-        "accordion-up": "accordion-up 0.2s ease-out",
+      transitionDuration: {
+        DEFAULT: "175ms",
+      },
+      transitionTimingFunction: {
+        DEFAULT: " cubic-bezier(0.16, 1, 0.3, 1)",
       },
     },
   },
@@ -93,4 +102,3 @@ const config: Config = {
 };
 
 export default config;
-
