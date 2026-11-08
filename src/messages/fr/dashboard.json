@@ -1,0 +1,11 @@
+{
+  "title": "Tableau de bord",
+  "greeting": "Bonjour",
+  "attentionStrip": {
+    "title": "Requiert votre attention",
+    "upcomingHearings": "Audiences à venir",
+    "overdueTasks": "Tâches en retard",
+    "pendingValidations": "Validations en attente"
+  }
+}
+

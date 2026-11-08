@@ -1,0 +1,1543 @@
+// =============================================================================
+// Law Firm Management Platform - Prisma schema (PostgreSQL)
+// Covers V1 to V2.1 (core, advanced legal, finance) plus V3 support tables
+// (AI suggestions, backup runs, external transfer register). The V4 client
+// portal tables are added later through a normal migration.
+//
+// Rules baked into this schema (enforced in the service layer):
+//  - Auth tables (User, Session, Account, Verification, TwoFactor) follow Better
+//    Auth's expected shape. After installing Better Auth, run
+//    `npx @better-auth/cli generate` and diff against this file; keep our
+//    additional User fields (locale, status, roleId, lastLoginAt).
+//  - Soft delete (deletedAt) for parties, matters, documents.
+//  - Validated DocumentVersion rows are never modified.
+//  - A postponed hearing creates a NEW Event (replacesEventId).
+//  - AuditLog and StatusChange are append-only (REVOKE UPDATE, DELETE in SQL).
+//  - Invoice payment status (partially paid, paid, overdue) is COMPUTED from
+//    validated payments. It is never stored and never moved by hand.
+//  - Timestamps are UTC. Money uses Decimal. Default currency XAF.
+//  - Add pg_trgm and trigram indexes on Party.displayName in a raw SQL
+//    migration (conflict check and duplicate detection).
+//  - Run `npx prisma format` and `npx prisma validate` after copying this file.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+enum Locale {
+  FR
+  EN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum PartyType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum ClientStatus {
+  NONE
+  PROSPECT
+  CLIENT
+  FORMER
+}
+
+enum MatterPartyRole {
+  CLIENT
+  OPPOSING_PARTY
+  OPPOSING_COUNSEL
+  WITNESS
+  EXPERT
+  OTHER
+}
+
+enum MatterStatus {
+  OPEN
+  ON_HOLD
+  CLOSED
+  ARCHIVED
+}
+
+enum Confidentiality {
+  STANDARD
+  RESTRICTED
+  STRICT
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum MatterAccessLevel {
+  VIEW
+  EDIT
+  MANAGE
+}
+
+enum MissionType {
+  ADVISORY
+  CONSULTATION
+  DRAFTING
+  REPRESENTATION
+  OTHER
+}
+
+enum MissionStatus {
+  PLANNED
+  ACTIVE
+  DONE
+  CANCELLED
+}
+
+enum ProcedureKind {
+  FIRST_INSTANCE
+  APPEAL
+  CASSATION
+  ENFORCEMENT
+  ARBITRATION
+  ADMINISTRATIVE
+  OTHER
+}
+
+enum ProcedureStatus {
+  PREPARING
+  ONGOING
+  DECIDED
+  APPEALED
+  EXECUTION
+  CLOSED
+}
+
+enum EventType {
+  HEARING
+  FILING
+  NOTIFICATION
+  DECISION
+  APPOINTMENT
+  CONSULTATION
+  MEETING
+  INTERNAL_DEADLINE
+  PROCEDURAL_DEADLINE
+  OTHER
+}
+
+enum EventStatus {
+  SCHEDULED
+  DONE
+  POSTPONED
+  CANCELLED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  WAITING
+  TO_VALIDATE
+  DONE
+  CANCELLED
+}
+
+enum DocumentStatus {
+  DRAFT
+  VALIDATED
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  ERROR
+}
+
+enum ConflictResult {
+  NONE_FOUND
+  POTENTIAL_CONFLICT
+  CONFIRMED_CONFLICT
+  CLEARED
+  WAIVED
+}
+
+enum WorkflowEntity {
+  INQUIRY
+  MATTER
+  MISSION
+  PROCEDURE
+  TASK
+  DOCUMENT
+  INVOICE
+  CLIENT_REQUEST
+}
+
+enum InquiryChannel {
+  PHONE
+  EMAIL
+  LETTER
+  WALK_IN
+  FORM
+  OTHER
+}
+
+enum DecisionOutcome {
+  ACCEPTED
+  REFUSED
+}
+
+enum RequirementStatus {
+  PENDING
+  RECEIVED
+  WAIVED
+}
+
+enum CommunicationChannel {
+  EMAIL
+  PHONE
+  MEETING
+  LETTER
+  WHATSAPP
+  SMS
+  OTHER
+}
+
+enum CommunicationDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum FeeAgreementType {
+  FIXED
+  HOURLY
+  RETAINER
+  SUCCESS_FEE
+  MIXED
+}
+
+enum FeeAgreementStatus {
+  DRAFT
+  SENT
+  SIGNED
+  ENDED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  MOBILE_MONEY
+  CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+}
+
+enum ExpenseKind {
+  FIRM_EXPENSE
+  DISBURSEMENT
+}
+
+enum ApprovalStatus {
+  DRAFT
+  APPROVED
+  REJECTED
+}
+
+enum FundEntryType {
+  DEPOSIT
+  WITHDRAWAL
+  TRANSFER_TO_INVOICE
+}
+
+enum DestructionStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  EXECUTED
+}
+
+enum AiSuggestionKind {
+  SUMMARY
+  EXTRACTION
+  COMPARISON
+  DRAFT
+  CHRONOLOGY
+  INCONSISTENCY
+  SEARCH
+}
+
+enum AiSuggestionStatus {
+  PENDING_REVIEW
+  ACCEPTED
+  REJECTED
+}
+
+enum BackupKind {
+  DATABASE
+  DOCUMENTS
+  OFFSITE_SYNC
+  RESTORE_TEST
+}
+
+enum RunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+  PARTIAL
+}
+
+enum TransferProvider {
+  GOOGLE_DRIVE
+  OPENAI
+  CLOUDFLARE
+  OTHER
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  DETECTED
+  CONTAINED
+  RESTORED
+  CLOSED
+}
+
+// -----------------------------------------------------------------------------
+// Users, authentication (Better Auth), roles, permissions
+// -----------------------------------------------------------------------------
+
+model User {
+  id               String     @id // generated by Better Auth
+  name             String
+  email            String     @unique
+  emailVerified    Boolean    @default(false)
+  image            String?
+  twoFactorEnabled Boolean?   @default(false) // Better Auth two-factor plugin
+  locale           Locale     @default(FR)
+  status           UserStatus @default(ACTIVE)
+  roleId           String
+  role             Role       @relation(fields: [roleId], references: [id])
+  lastLoginAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  sessions   Session[]
+  accounts   Account[]
+  twoFactors TwoFactor[]
+
+  leadMatters            Matter[]                   @relation("MatterLead")
+  createdMatters         Matter[]                   @relation("MatterCreator")
+  closureRequests        Matter[]                   @relation("ClosureRequester")
+  closureApprovals       Matter[]                   @relation("ClosureApprover")
+  matterAccess           MatterMember[]
+  ownedMissions          Mission[]                  @relation("MissionOwner")
+  assignedInquiries      Inquiry[]                  @relation("InquiryAssignee")
+  createdInquiries       Inquiry[]                  @relation("InquiryCreator")
+  acceptanceDecisions    AcceptanceDecision[]
+  conflictChecks         ConflictCheck[]
+  createdEvents          Event[]                    @relation("EventCreator")
+  validatedDeadlines     Event[]                    @relation("DeadlineValidator")
+  eventAttendance        EventAttendee[]
+  eventReminders         EventReminder[]
+  assignedTasks          Task[]                     @relation("TaskAssignee")
+  createdTasks           Task[]                     @relation("TaskCreator")
+  validatedTasks         Task[]                     @relation("TaskValidator")
+  notes                  Note[]
+  uploadedVersions       DocumentVersion[]          @relation("VersionUploader")
+  validatedVersions      DocumentVersion[]          @relation("VersionValidator")
+  communications         Communication[]
+  createdFeeAgreements   FeeAgreement[]
+  createdInvoices        Invoice[]                  @relation("InvoiceCreator")
+  validatedInvoices      Invoice[]                  @relation("InvoiceValidator")
+  recordedPayments       Payment[]                  @relation("PaymentRecorder")
+  validatedPayments      Payment[]                  @relation("PaymentValidator")
+  recordedExpenses       Expense[]                  @relation("ExpenseRecorder")
+  approvedExpenses       Expense[]                  @relation("ExpenseApprover")
+  recordedFundEntries    ClientFundEntry[]          @relation("FundRecorder")
+  validatedFundEntries   ClientFundEntry[]          @relation("FundValidator")
+  invoiceReminders       InvoiceReminder[]
+  timeEntries            TimeEntry[]
+  assignedClientRequests ClientRequest[]
+  statusChanges          StatusChange[]
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+  adminGrantsReceived    AdminAccessGrant[]         @relation("GrantAdmin")
+  adminGrantsApproved    AdminAccessGrant[]         @relation("GrantApprover")
+  destructionHolds       DestructionHold[]
+  destructionRequests    DestructionRequest[]       @relation("DestructionRequester")
+  destructionApprovals   DestructionRequest[]       @relation("DestructionApprover")
+  aiRequests             AiSuggestion[]             @relation("AiRequester")
+  aiReviews              AiSuggestion[]             @relation("AiReviewer")
+  transferApprovals      ExternalTransferApproval[]
+  reportedIncidents      Incident[]
+
+  @@index([status])
+  @@index([roleId])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Holds the password hash (Argon2id via a custom hasher) for the credential provider.
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@index([identifier])
+}
+
+model TwoFactor {
+  id          String @id
+  secret      String
+  backupCodes String
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Roles: PARTNER, LEAD_LAWYER, ASSOCIATE_LAWYER, SECRETARY, ACCOUNTANT,
+// FUNCTIONAL_ADMIN, TECHNICAL_ADMIN (CLIENT added in V4 if the portal is built).
+model Role {
+  id          String           @id @default(uuid())
+  key         String           @unique
+  nameFr      String
+  nameEn      String
+  users       User[]
+  permissions RolePermission[]
+}
+
+// Permission keys are "resource.action", for example "matter.view",
+// "document.download", "invoice.validate". See PERMISSIONS.md.
+// A role alone never grants access to a matter: MatterMember or lead lawyer too.
+model Permission {
+  id          String           @id @default(uuid())
+  key         String           @unique
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+// Exceptional, approved, time-limited, logged access for the technical admin.
+model AdminAccessGrant {
+  id           String    @id @default(uuid())
+  adminId      String
+  admin        User      @relation("GrantAdmin", fields: [adminId], references: [id])
+  matterId     String
+  matter       Matter    @relation(fields: [matterId], references: [id])
+  reason       String
+  approvedById String
+  approvedBy   User      @relation("GrantApprover", fields: [approvedById], references: [id])
+  startsAt     DateTime
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([adminId, expiresAt])
+  @@index([matterId])
+}
+
+// -----------------------------------------------------------------------------
+// Firm settings, counters, feature flags
+// -----------------------------------------------------------------------------
+
+model FirmSetting {
+  key       String   @id // e.g. "firm.profile", "matter.numbering"
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+// Flags: "ai.enabled", "drive.sync.enabled", "storage.cloudflare.enabled",
+// "portal.enabled". All external integrations are OFF by default.
+model FeatureFlag {
+  key         String   @id
+  enabled     Boolean  @default(false)
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+// Safe sequential numbering, e.g. key "MATTER-2026", "INVOICE-2026".
+model ReferenceCounter {
+  key   String @id
+  value Int    @default(0)
+}
+
+// -----------------------------------------------------------------------------
+// Parties, inquiries, conflict checks
+// -----------------------------------------------------------------------------
+
+model Party {
+  id                 String       @id @default(uuid())
+  type               PartyType
+  clientStatus       ClientStatus @default(NONE)
+  displayName        String
+  firstName          String?
+  lastName           String?
+  companyName        String?
+  registrationNumber String? // RCCM
+  taxId              String? // NIU
+  email              String?
+  phone              String?
+  address            String?
+  city               String?
+  country            String       @default("CM")
+  convertedAt        DateTime? // prospect -> client
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  deletedAt          DateTime?
+
+  contacts       PartyContact[]
+  inquiries      Inquiry[]
+  matterParties  MatterParty[]
+  conflictChecks ConflictCheck[]
+  events         Event[]
+  communications Communication[]
+  feeAgreements  FeeAgreement[]
+  invoices       Invoice[]
+  fundEntries    ClientFundEntry[]
+  clientRequests ClientRequest[]
+
+  @@index([displayName])
+  @@index([clientStatus])
+  @@index([deletedAt])
+}
+
+model PartyContact {
+  id               String  @id @default(uuid())
+  partyId          String
+  party            Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  name             String
+  title            String?
+  email            String?
+  phone            String?
+  isRepresentative Boolean @default(false)
+}
+
+// A request received by the firm. This is the item that moves along the
+// prospect workflow (Kanban).
+model Inquiry {
+  id             String         @id @default(uuid())
+  partyId        String
+  party          Party          @relation(fields: [partyId], references: [id])
+  channel        InquiryChannel
+  subject        String
+  description    String?
+  origin         String? // how they heard of the firm
+  receivedAt     DateTime       @default(now())
+  workflowStepId String?
+  workflowStep   WorkflowStep?  @relation(fields: [workflowStepId], references: [id])
+  assignedToId   String?
+  assignedTo     User?          @relation("InquiryAssignee", fields: [assignedToId], references: [id])
+  createdById    String
+  createdBy      User           @relation("InquiryCreator", fields: [createdById], references: [id])
+  lostReason     String?
+  convertedAt    DateTime?
+  matterId       String? // matter opened from this inquiry
+  matter         Matter?        @relation(fields: [matterId], references: [id])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  decisions AcceptanceDecision[]
+  tasks     Task[]
+
+  @@index([workflowStepId])
+  @@index([assignedToId])
+  @@index([partyId])
+}
+
+// Accept or refuse decision with author, date and reason.
+model AcceptanceDecision {
+  id          String          @id @default(uuid())
+  inquiryId   String?
+  inquiry     Inquiry?        @relation(fields: [inquiryId], references: [id])
+  matterId    String?
+  matter      Matter?         @relation(fields: [matterId], references: [id])
+  outcome     DecisionOutcome
+  reason      String
+  decidedById String
+  decidedBy   User            @relation(fields: [decidedById], references: [id])
+  decidedAt   DateTime        @default(now())
+
+  @@index([inquiryId])
+  @@index([matterId])
+}
+
+// Stored result of every conflict search so the decision is traceable.
+model ConflictCheck {
+  id            String         @id @default(uuid())
+  queryText     String
+  partyId       String?
+  party         Party?         @relation(fields: [partyId], references: [id])
+  matterId      String?
+  matter        Matter?        @relation(fields: [matterId], references: [id])
+  performedById String
+  performedBy   User           @relation(fields: [performedById], references: [id])
+  result        ConflictResult
+  matches       Json? // snapshot of matched parties and matters
+  decisionNote  String?
+  createdAt     DateTime       @default(now())
+
+  @@index([partyId])
+  @@index([matterId])
+}
+
+// -----------------------------------------------------------------------------
+// Matters, missions, procedures
+// -----------------------------------------------------------------------------
+
+model MatterCategory {
+  id                   String                        @id @default(uuid())
+  key                  String                        @unique
+  nameFr               String
+  nameEn               String
+  workflowDefinitionId String? // workflow per matter type
+  workflowDefinition   WorkflowDefinition?           @relation(fields: [workflowDefinitionId], references: [id])
+  matters              Matter[]
+  requirements         DocumentRequirementTemplate[]
+}
+
+model Matter {
+  id                   String          @id @default(uuid())
+  reference            String          @unique
+  title                String
+  description          String?
+  categoryId           String
+  category             MatterCategory  @relation(fields: [categoryId], references: [id])
+  status               MatterStatus    @default(OPEN)
+  workflowStepId       String?
+  workflowStep         WorkflowStep?   @relation(fields: [workflowStepId], references: [id])
+  priority             Priority        @default(NORMAL)
+  confidentiality      Confidentiality @default(STANDARD)
+  leadLawyerId         String
+  leadLawyer           User            @relation("MatterLead", fields: [leadLawyerId], references: [id])
+  createdById          String
+  createdBy            User            @relation("MatterCreator", fields: [createdById], references: [id])
+  openedAt             DateTime        @default(now())
+  closureReason        String?
+  closureRequestedById String?
+  closureRequestedBy   User?           @relation("ClosureRequester", fields: [closureRequestedById], references: [id])
+  closureRequestedAt   DateTime?
+  closureApprovedById  String?
+  closureApprovedBy    User?           @relation("ClosureApprover", fields: [closureApprovedById], references: [id])
+  closureApprovedAt    DateTime?
+  closedAt             DateTime?
+  archivedAt           DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  deletedAt            DateTime?
+
+  parties             MatterParty[]
+  members             MatterMember[]
+  inquiries           Inquiry[]
+  acceptanceDecisions AcceptanceDecision[]
+  conflictChecks      ConflictCheck[]
+  missions            Mission[]
+  procedures          Procedure[]
+  events              Event[]
+  tasks               Task[]
+  notes               Note[]
+  documents           Document[]
+  expectedDocuments   ExpectedDocument[]
+  communications      Communication[]
+  feeAgreements       FeeAgreement[]
+  invoices            Invoice[]
+  expenses            Expense[]
+  fundEntries         ClientFundEntry[]
+  timeEntries         TimeEntry[]
+  clientRequests      ClientRequest[]
+  aiSuggestions       AiSuggestion[]
+  adminGrants         AdminAccessGrant[]
+  destructionHolds    DestructionHold[]
+  destructionRequests DestructionRequest[]
+
+  @@index([status])
+  @@index([leadLawyerId])
+  @@index([categoryId])
+  @@index([deletedAt])
+}
+
+model MatterParty {
+  id       String          @id @default(uuid())
+  matterId String
+  matter   Matter          @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  partyId  String
+  party    Party           @relation(fields: [partyId], references: [id])
+  role     MatterPartyRole
+
+  @@unique([matterId, partyId, role])
+  @@index([partyId])
+}
+
+// WHAT a user may do comes from the role. WHICH matters they may do it on comes
+// from this table (the lead lawyer always has MANAGE).
+model MatterMember {
+  matterId String
+  userId   String
+  level    MatterAccessLevel @default(VIEW)
+  matter   Matter            @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([matterId, userId])
+  @@index([userId])
+}
+
+model Mission {
+  id             String        @id @default(uuid())
+  matterId       String
+  matter         Matter        @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  type           MissionType
+  title          String
+  scope          String?
+  deliverables   String?
+  ownerId        String?
+  owner          User?         @relation("MissionOwner", fields: [ownerId], references: [id])
+  status         MissionStatus @default(PLANNED)
+  workflowStepId String?
+  workflowStep   WorkflowStep? @relation(fields: [workflowStepId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  procedures    Procedure[]
+  feeAgreements FeeAgreement[]
+
+  @@index([matterId])
+}
+
+model Procedure {
+  id                String          @id @default(uuid())
+  matterId          String
+  matter            Matter          @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  missionId         String?
+  mission           Mission?        @relation(fields: [missionId], references: [id])
+  kind              ProcedureKind   @default(FIRST_INSTANCE)
+  parentProcedureId String? // an appeal points to the procedure it challenges
+  parentProcedure   Procedure?      @relation("ProcedureChain", fields: [parentProcedureId], references: [id])
+  childProcedures   Procedure[]     @relation("ProcedureChain")
+  jurisdiction      String? // court, tribunal or authority
+  reference         String? // case number
+  status            ProcedureStatus @default(PREPARING)
+  workflowStepId    String?
+  workflowStep      WorkflowStep?   @relation(fields: [workflowStepId], references: [id])
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  events Event[]
+  tasks  Task[]
+
+  @@index([matterId])
+}
+
+// -----------------------------------------------------------------------------
+// Calendar and events
+// -----------------------------------------------------------------------------
+
+model Event {
+  id                    String      @id @default(uuid())
+  type                  EventType
+  status                EventStatus @default(SCHEDULED)
+  title                 String
+  startsAt              DateTime
+  endsAt                DateTime?
+  allDay                Boolean     @default(false)
+  location              String?
+  description           String?
+  source                String? // where the date comes from (notice, ruling, clerk...)
+  matterId              String?
+  matter                Matter?     @relation(fields: [matterId], references: [id])
+  procedureId           String?
+  procedure             Procedure?  @relation(fields: [procedureId], references: [id])
+  partyId               String? // e.g. appointment with a prospect
+  party                 Party?      @relation(fields: [partyId], references: [id])
+  // A postponed hearing is never overwritten: a new event points to the old one.
+  replacesEventId       String?     @unique
+  replacesEvent         Event?      @relation("EventReplacement", fields: [replacesEventId], references: [id])
+  replacedBy            Event?      @relation("EventReplacement")
+  // Procedural deadlines need human validation by a lawyer.
+  deadlineValidatedById String?
+  deadlineValidatedBy   User?       @relation("DeadlineValidator", fields: [deadlineValidatedById], references: [id])
+  deadlineValidatedAt   DateTime?
+  createdById           String
+  createdBy             User        @relation("EventCreator", fields: [createdById], references: [id])
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  attendees EventAttendee[]
+  reminders EventReminder[]
+  documents EventDocument[]
+  tasks     Task[]
+  notes     Note[]
+
+  @@index([startsAt])
+  @@index([matterId])
+  @@index([type, status])
+}
+
+model EventAttendee {
+  eventId String
+  userId  String
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
+}
+
+model EventReminder {
+  id                  String    @id @default(uuid())
+  eventId             String
+  event               Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  remindBeforeMinutes Int
+  sentAt              DateTime?
+
+  @@index([eventId])
+  @@index([sentAt])
+}
+
+model EventDocument {
+  eventId    String
+  documentId String
+  event      Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, documentId])
+}
+
+// -----------------------------------------------------------------------------
+// Tasks, notes, time
+// -----------------------------------------------------------------------------
+
+model Task {
+  id                 String        @id @default(uuid())
+  title              String
+  description        String?
+  status             TaskStatus    @default(TODO)
+  priority           Priority      @default(NORMAL)
+  matterId           String?
+  matter             Matter?       @relation(fields: [matterId], references: [id])
+  procedureId        String?
+  procedure          Procedure?    @relation(fields: [procedureId], references: [id])
+  documentId         String?
+  document           Document?     @relation(fields: [documentId], references: [id])
+  eventId            String?
+  event              Event?        @relation(fields: [eventId], references: [id])
+  inquiryId          String?
+  inquiry            Inquiry?      @relation(fields: [inquiryId], references: [id])
+  assigneeId         String?
+  assignee           User?         @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdById        String
+  createdBy          User          @relation("TaskCreator", fields: [createdById], references: [id])
+  startAt            DateTime?
+  dueAt              DateTime?
+  estimatedMinutes   Int?
+  requiresValidation Boolean       @default(false)
+  validatedById      String?
+  validatedBy        User?         @relation("TaskValidator", fields: [validatedById], references: [id])
+  validatedAt        DateTime?
+  cancelReason       String?
+  workflowStepId     String?
+  workflowStep       WorkflowStep? @relation(fields: [workflowStepId], references: [id])
+  completedAt        DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  checklist   TaskChecklistItem[]
+  attachments TaskAttachment[]
+  timeEntries TimeEntry[]
+
+  @@index([assigneeId, status])
+  @@index([matterId])
+  @@index([dueAt])
+}
+
+model TaskChecklistItem {
+  id       String  @id @default(uuid())
+  taskId   String
+  task     Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label    String
+  done     Boolean @default(false)
+  position Int     @default(0)
+}
+
+model TaskAttachment {
+  taskId     String
+  documentId String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, documentId])
+}
+
+// Internal notes stay internal. Only notes flagged shareable can feed a
+// client-facing summary.
+model Note {
+  id        String   @id @default(uuid())
+  matterId  String
+  matter    Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  eventId   String? // e.g. consultation notes
+  event     Event?   @relation(fields: [eventId], references: [id])
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String
+  shareable Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([matterId])
+}
+
+model TimeEntry {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  matterId    String
+  matter      Matter   @relation(fields: [matterId], references: [id])
+  taskId      String?
+  task        Task?    @relation(fields: [taskId], references: [id])
+  workDate    DateTime @db.Date
+  minutes     Int
+  description String?
+  billable    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([matterId, workDate])
+  @@index([userId, workDate])
+}
+
+// -----------------------------------------------------------------------------
+// Documents (versioned, never overwritten), retention
+// -----------------------------------------------------------------------------
+
+model RetentionPolicy {
+  id             String             @id @default(uuid())
+  key            String             @unique
+  nameFr         String
+  nameEn         String
+  retentionYears Int
+  description    String?
+  categories     DocumentCategory[]
+}
+
+model DocumentCategory {
+  id                String           @id @default(uuid())
+  key               String           @unique
+  nameFr            String
+  nameEn            String
+  retentionPolicyId String?
+  retentionPolicy   RetentionPolicy? @relation(fields: [retentionPolicyId], references: [id])
+  documents         Document[]
+}
+
+model Document {
+  id              String            @id @default(uuid())
+  matterId        String
+  matter          Matter            @relation(fields: [matterId], references: [id])
+  categoryId      String?
+  category        DocumentCategory? @relation(fields: [categoryId], references: [id])
+  title           String
+  confidentiality Confidentiality   @default(STANDARD)
+  workflowStepId  String?
+  workflowStep    WorkflowStep?     @relation(fields: [workflowStepId], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+
+  versions            DocumentVersion[]
+  eventLinks          EventDocument[]
+  taskAttachments     TaskAttachment[]
+  tasks               Task[]
+  expectedFor         ExpectedDocument[]
+  feeAgreements       FeeAgreement[]
+  communications      Communication[]
+  expenseReceipts     Expense[]
+  destructionHolds    DestructionHold[]
+  destructionRequests DestructionRequest[]
+
+  @@index([matterId])
+  @@index([deletedAt])
+}
+
+model DocumentVersion {
+  id            String         @id @default(uuid())
+  documentId    String
+  document      Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  fileName      String
+  mimeType      String
+  sizeBytes     Int
+  sha256        String
+  storageKey    String // opaque key in the storage provider, never a public URL
+  status        DocumentStatus @default(DRAFT)
+  scanStatus    ScanStatus     @default(PENDING)
+  comment       String?
+  uploadedById  String
+  uploadedBy    User           @relation("VersionUploader", fields: [uploadedById], references: [id])
+  validatedById String?
+  validatedBy   User?          @relation("VersionValidator", fields: [validatedById], references: [id])
+  validatedAt   DateTime?
+  createdAt     DateTime       @default(now())
+
+  @@unique([documentId, versionNumber])
+}
+
+// Template of expected documents by matter category (completeness checks).
+model DocumentRequirementTemplate {
+  id         String         @id @default(uuid())
+  categoryId String
+  category   MatterCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  labelFr    String
+  labelEn    String
+  required   Boolean        @default(true)
+  position   Int            @default(0)
+}
+
+model ExpectedDocument {
+  id         String            @id @default(uuid())
+  matterId   String
+  matter     Matter            @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  label      String
+  required   Boolean           @default(true)
+  status     RequirementStatus @default(PENDING)
+  documentId String?
+  document   Document?         @relation(fields: [documentId], references: [id])
+  dueAt      DateTime?
+
+  @@index([matterId, status])
+}
+
+// A destruction hold suspends any deletion it covers.
+model DestructionHold {
+  id         String    @id @default(uuid())
+  matterId   String?
+  matter     Matter?   @relation(fields: [matterId], references: [id])
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id])
+  reason     String
+  placedById String
+  placedBy   User      @relation(fields: [placedById], references: [id])
+  placedAt   DateTime  @default(now())
+  releasedAt DateTime?
+
+  @@index([matterId])
+  @@index([documentId])
+}
+
+model DestructionRequest {
+  id            String            @id @default(uuid())
+  matterId      String?
+  matter        Matter?           @relation(fields: [matterId], references: [id])
+  documentId    String?
+  document      Document?         @relation(fields: [documentId], references: [id])
+  reason        String
+  status        DestructionStatus @default(REQUESTED)
+  requestedById String
+  requestedBy   User              @relation("DestructionRequester", fields: [requestedById], references: [id])
+  approvedById  String?
+  approvedBy    User?             @relation("DestructionApprover", fields: [approvedById], references: [id])
+  requestedAt   DateTime          @default(now())
+  decidedAt     DateTime?
+  executedAt    DateTime?
+}
+
+// -----------------------------------------------------------------------------
+// Communications and client requests
+// -----------------------------------------------------------------------------
+
+model Communication {
+  id              String                 @id @default(uuid())
+  matterId        String?
+  matter          Matter?                @relation(fields: [matterId], references: [id])
+  partyId         String?
+  party           Party?                 @relation(fields: [partyId], references: [id])
+  channel         CommunicationChannel
+  direction       CommunicationDirection
+  subject         String?
+  body            String?
+  occurredAt      DateTime
+  confidentiality Confidentiality        @default(STANDARD)
+  documentId      String?
+  document        Document?              @relation(fields: [documentId], references: [id])
+  authorId        String
+  author          User                   @relation(fields: [authorId], references: [id])
+  createdAt       DateTime               @default(now())
+
+  @@index([matterId, occurredAt])
+}
+
+// Internal in V1 to V3. Fed by the portal in V4 (createdById stays optional then).
+model ClientRequest {
+  id             String        @id @default(uuid())
+  partyId        String
+  party          Party         @relation(fields: [partyId], references: [id])
+  matterId       String?
+  matter         Matter?       @relation(fields: [matterId], references: [id])
+  subject        String
+  description    String?
+  receivedAt     DateTime      @default(now())
+  workflowStepId String?
+  workflowStep   WorkflowStep? @relation(fields: [workflowStepId], references: [id])
+  assignedToId   String?
+  assignedTo     User?         @relation(fields: [assignedToId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([workflowStepId])
+}
+
+// -----------------------------------------------------------------------------
+// Finance (V2.1)
+// -----------------------------------------------------------------------------
+
+model FeeAgreement {
+  id          String             @id @default(uuid())
+  matterId    String
+  matter      Matter             @relation(fields: [matterId], references: [id])
+  missionId   String?
+  mission     Mission?           @relation(fields: [missionId], references: [id])
+  partyId     String // the client being billed
+  party       Party              @relation(fields: [partyId], references: [id])
+  title       String
+  type        FeeAgreementType
+  amount      Decimal?           @db.Decimal(14, 2)
+  currency    String             @default("XAF")
+  terms       String?
+  status      FeeAgreementStatus @default(DRAFT)
+  signedAt    DateTime?
+  documentId  String? // signed copy
+  document    Document?          @relation(fields: [documentId], references: [id])
+  createdById String
+  createdBy   User               @relation(fields: [createdById], references: [id])
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  invoices Invoice[]
+
+  @@index([matterId])
+}
+
+// The stored state is the workflow step (draft, to validate, issued, cancelled).
+// Partially paid, paid and overdue are computed from validated payments.
+model Invoice {
+  id             String        @id @default(uuid())
+  number         String        @unique // from ReferenceCounter
+  matterId       String
+  matter         Matter        @relation(fields: [matterId], references: [id])
+  partyId        String
+  party          Party         @relation(fields: [partyId], references: [id])
+  feeAgreementId String?
+  feeAgreement   FeeAgreement? @relation(fields: [feeAgreementId], references: [id])
+  workflowStepId String?
+  workflowStep   WorkflowStep? @relation(fields: [workflowStepId], references: [id])
+  currency       String        @default("XAF")
+  subtotal       Decimal       @db.Decimal(14, 2)
+  taxTotal       Decimal       @default(0) @db.Decimal(14, 2)
+  total          Decimal       @db.Decimal(14, 2)
+  issuedAt       DateTime?
+  dueAt          DateTime?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  notes          String?
+  createdById    String
+  createdBy      User          @relation("InvoiceCreator", fields: [createdById], references: [id])
+  validatedById  String?
+  validatedBy    User?         @relation("InvoiceValidator", fields: [validatedById], references: [id])
+  validatedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  lines       InvoiceLine[]
+  payments    Payment[]
+  reminders   InvoiceReminder[]
+  expenses    Expense[]
+  fundEntries ClientFundEntry[]
+
+  @@index([matterId])
+  @@index([partyId])
+  @@index([dueAt])
+}
+
+model InvoiceLine {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  position    Int     @default(0)
+  description String
+  quantity    Decimal @default(1) @db.Decimal(10, 2)
+  unitPrice   Decimal @db.Decimal(14, 2)
+  taxRate     Decimal @default(0) @db.Decimal(5, 2)
+  amount      Decimal @db.Decimal(14, 2)
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  invoiceId       String
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id])
+  amount          Decimal       @db.Decimal(14, 2)
+  method          PaymentMethod
+  paidAt          DateTime
+  reference       String?
+  status          PaymentStatus @default(PENDING)
+  rejectionReason String?
+  recordedById    String
+  recordedBy      User          @relation("PaymentRecorder", fields: [recordedById], references: [id])
+  validatedById   String?
+  validatedBy     User?         @relation("PaymentValidator", fields: [validatedById], references: [id])
+  validatedAt     DateTime?
+  createdAt       DateTime      @default(now())
+
+  @@index([invoiceId, status])
+}
+
+model InvoiceReminder {
+  id          String               @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  level       Int                  @default(1)
+  channel     CommunicationChannel
+  sentAt      DateTime
+  note        String?
+  createdById String
+  createdBy   User                 @relation(fields: [createdById], references: [id])
+}
+
+model ExpenseCategory {
+  id       String    @id @default(uuid())
+  key      String    @unique
+  nameFr   String
+  nameEn   String
+  expenses Expense[]
+}
+
+// Firm expense, or a disbursement (debours) that may be re-billed to the client.
+model Expense {
+  id                String          @id @default(uuid())
+  matterId          String?
+  matter            Matter?         @relation(fields: [matterId], references: [id])
+  kind              ExpenseKind
+  categoryId        String
+  category          ExpenseCategory @relation(fields: [categoryId], references: [id])
+  amount            Decimal         @db.Decimal(14, 2)
+  currency          String          @default("XAF")
+  incurredAt        DateTime
+  description       String
+  receiptDocumentId String?
+  receiptDocument   Document?       @relation(fields: [receiptDocumentId], references: [id])
+  rebillable        Boolean         @default(false)
+  invoiceId         String? // set when re-billed
+  invoice           Invoice?        @relation(fields: [invoiceId], references: [id])
+  status            ApprovalStatus  @default(DRAFT)
+  recordedById      String
+  recordedBy        User            @relation("ExpenseRecorder", fields: [recordedById], references: [id])
+  approvedById      String?
+  approvedBy        User?           @relation("ExpenseApprover", fields: [approvedById], references: [id])
+  createdAt         DateTime        @default(now())
+
+  @@index([matterId])
+}
+
+// Tracking ledger for client funds. Not an accounting authority.
+model ClientFundEntry {
+  id            String        @id @default(uuid())
+  matterId      String
+  matter        Matter        @relation(fields: [matterId], references: [id])
+  partyId       String
+  party         Party         @relation(fields: [partyId], references: [id])
+  type          FundEntryType
+  amount        Decimal       @db.Decimal(14, 2)
+  currency      String        @default("XAF")
+  occurredAt    DateTime
+  reference     String?
+  invoiceId     String?
+  invoice       Invoice?      @relation(fields: [invoiceId], references: [id])
+  recordedById  String
+  recordedBy    User          @relation("FundRecorder", fields: [recordedById], references: [id])
+  validatedById String?
+  validatedBy   User?         @relation("FundValidator", fields: [validatedById], references: [id])
+  validatedAt   DateTime?
+
+  @@index([matterId])
+}
+
+// -----------------------------------------------------------------------------
+// Workflow engine (shared by all modules, versioned)
+// -----------------------------------------------------------------------------
+
+// Editing a workflow creates a new version. Items keep pointing to the steps
+// they were processed with, so history is never altered.
+model WorkflowDefinition {
+  id        String         @id @default(uuid())
+  key       String
+  version   Int            @default(1)
+  isActive  Boolean        @default(true)
+  entity    WorkflowEntity
+  nameFr    String
+  nameEn    String
+  createdAt DateTime       @default(now())
+
+  steps       WorkflowStep[]
+  transitions WorkflowTransition[]
+  categories  MatterCategory[]
+
+  @@unique([key, version])
+}
+
+model WorkflowStep {
+  id           String             @id @default(uuid())
+  definitionId String
+  definition   WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  key          String
+  nameFr       String
+  nameEn       String
+  color        String?
+  position     Int
+  isInitial    Boolean            @default(false)
+  isFinal      Boolean            @default(false)
+
+  outgoing       WorkflowTransition[] @relation("TransitionFrom")
+  incoming       WorkflowTransition[] @relation("TransitionTo")
+  inquiries      Inquiry[]
+  matters        Matter[]
+  missions       Mission[]
+  procedures     Procedure[]
+  tasks          Task[]
+  documents      Document[]
+  invoices       Invoice[]
+  clientRequests ClientRequest[]
+
+  @@unique([definitionId, key])
+}
+
+model WorkflowTransition {
+  id                    String             @id @default(uuid())
+  definitionId          String
+  definition            WorkflowDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  fromStepId            String
+  fromStep              WorkflowStep       @relation("TransitionFrom", fields: [fromStepId], references: [id])
+  toStepId              String
+  toStep                WorkflowStep       @relation("TransitionTo", fields: [toStepId], references: [id])
+  requiredPermissionKey String?
+  requiresConfirmation  Boolean            @default(false)
+  requiresJustification Boolean            @default(false)
+  requiresAttachment    Boolean            @default(false)
+  requiresValidation    Boolean            @default(false)
+  autoActions           Json? // e.g. create task, notify, set date
+  notify                Json? // who is notified
+
+  @@unique([fromStepId, toStepId])
+}
+
+// Append-only history of every status change.
+model StatusChange {
+  id          String         @id @default(uuid())
+  entityType  WorkflowEntity
+  entityId    String
+  fromStepKey String?
+  toStepKey   String
+  comment     String?
+  changedById String
+  changedBy   User           @relation(fields: [changedById], references: [id])
+  createdAt   DateTime       @default(now())
+
+  @@index([entityType, entityId])
+}
+
+// -----------------------------------------------------------------------------
+// Templates
+// -----------------------------------------------------------------------------
+
+model FormTemplate {
+  id         String  @id @default(uuid())
+  key        String  @unique
+  entityType String
+  nameFr     String
+  nameEn     String
+  definition Json // fields, order, progressive steps
+  defaults   Json?
+  active     Boolean @default(true)
+}
+
+// V3: document generation.
+model DocumentTemplate {
+  id         String  @id @default(uuid())
+  key        String  @unique
+  nameFr     String
+  nameEn     String
+  locale     Locale  @default(FR)
+  storageKey String
+  variables  Json
+  active     Boolean @default(true)
+}
+
+// -----------------------------------------------------------------------------
+// Audit, notifications
+// -----------------------------------------------------------------------------
+
+// Append-only. In SQL: REVOKE UPDATE, DELETE ON "AuditLog" FROM the app role.
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String // e.g. "matter.view", "document.download", "export.matters"
+  entityType String
+  entityId   String?
+  matterId   String? // denormalised for per-matter trails
+  ip         String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([matterId, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // e.g. "task.assigned", "event.reminder", "workflow.transition"
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
+
+// -----------------------------------------------------------------------------
+// AI, backups, external transfers, incidents
+// -----------------------------------------------------------------------------
+
+// Every AI output is stored as a labelled suggestion and validated by a person.
+model AiSuggestion {
+  id                 String             @id @default(uuid())
+  kind               AiSuggestionKind
+  matterId           String?
+  matter             Matter?            @relation(fields: [matterId], references: [id])
+  documentVersionIds Json // ids of the versions that were sent
+  model              String
+  promptVersion      String
+  output             String
+  facts              Json? // extracted facts, kept apart from suggestions
+  sources            Json? // identifiable sources used
+  status             AiSuggestionStatus @default(PENDING_REVIEW)
+  tokensIn           Int?
+  tokensOut          Int?
+  requestedById      String
+  requestedBy        User               @relation("AiRequester", fields: [requestedById], references: [id])
+  reviewedById       String?
+  reviewedBy         User?              @relation("AiReviewer", fields: [reviewedById], references: [id])
+  reviewedAt         DateTime?
+  createdAt          DateTime           @default(now())
+
+  @@index([matterId])
+  @@index([requestedById, createdAt])
+}
+
+model BackupRun {
+  id             String     @id @default(uuid())
+  kind           BackupKind
+  status         RunStatus  @default(RUNNING)
+  startedAt      DateTime   @default(now())
+  finishedAt     DateTime?
+  sizeBytes      BigInt?
+  location       String? // path or remote name, never a secret
+  checksum       String?
+  restoreSeconds Int? // measured duration for RESTORE_TEST runs
+  error          String?
+
+  @@index([kind, startedAt])
+}
+
+// Register of external providers, approved before activation.
+model ExternalTransferApproval {
+  id             String           @id @default(uuid())
+  provider       TransferProvider
+  purpose        String
+  dataCategories String
+  legalReview    String? // note on the legal review under law n° 2024/017
+  approvedById   String
+  approvedBy     User             @relation(fields: [approvedById], references: [id])
+  approvedAt     DateTime         @default(now())
+  revokedAt      DateTime?
+}
+
+model Incident {
+  id           String           @id @default(uuid())
+  title        String
+  severity     IncidentSeverity
+  status       IncidentStatus   @default(DETECTED)
+  detectedAt   DateTime         @default(now())
+  description  String
+  actionsTaken String?
+  resolvedAt   DateTime?
+  reportedById String
+  reportedBy   User             @relation(fields: [reportedById], references: [id])
+}

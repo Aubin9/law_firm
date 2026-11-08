@@ -1,0 +1,21 @@
+{
+  "reference": "Référence",
+  "title": "Intitulé du dossier",
+  "category": "Catégorie",
+  "leadLawyer": "Avocat responsable",
+  "priority": "Priorité",
+  "confidentiality": "Confidentialité",
+  "members": "Membres",
+  "status": {
+    "open": "Ouvert",
+    "onHold": "En attente",
+    "closed": "Clôturé",
+    "archived": "Archivé"
+  },
+  "confidentialityLevels": {
+    "standard": "Standard",
+    "restricted": "Restreint",
+    "strict": "Strict"
+  }
+}
+

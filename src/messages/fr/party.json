@@ -1,0 +1,12 @@
+{
+  "type": "Type de partie",
+  "individual": "Personne physique",
+  "company": "Personne morale",
+  "displayName": "Nom complet / Raison sociale",
+  "registrationNumber": "RCCM",
+  "taxId": "NIU",
+  "email": "Email",
+  "phone": "Téléphone",
+  "duplicateWarning": "Attention : une partie similaire existe déjà."
+}
+

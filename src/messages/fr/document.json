@@ -1,0 +1,13 @@
+{
+  "title": "Titre du document",
+  "version": "Version",
+  "scanStatus": {
+    "pending": "Analyse antivirus en cours...",
+    "clean": "Fichier sain",
+    "infected": "Fichier infecté (quarantaine)",
+    "error": "Erreur d'analyse"
+  },
+  "download": "Télécharger",
+  "upload": "Déposer un document"
+}
+

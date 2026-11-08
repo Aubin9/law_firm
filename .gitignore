@@ -1,0 +1,46 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+/dist
+/docs
+
+# local storage and backups (opaque keys / restic repo)
+/storage/*
+!/storage/.gitkeep
+/backups/*
+!/backups/.gitkeep
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files (never commit secrets)
+.env
+.env*.local
+!.env.example
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+

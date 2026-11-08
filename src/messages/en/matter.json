@@ -1,0 +1,21 @@
+{
+  "reference": "Reference",
+  "title": "Matter Title",
+  "category": "Category",
+  "leadLawyer": "Lead Lawyer",
+  "priority": "Priority",
+  "confidentiality": "Confidentiality",
+  "members": "Members",
+  "status": {
+    "open": "Open",
+    "onHold": "On Hold",
+    "closed": "Closed",
+    "archived": "Archived"
+  },
+  "confidentialityLevels": {
+    "standard": "Standard",
+    "restricted": "Restricted",
+    "strict": "Strict"
+  }
+}
+

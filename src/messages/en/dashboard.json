@@ -1,0 +1,11 @@
+{
+  "title": "Dashboard",
+  "greeting": "Hello",
+  "attentionStrip": {
+    "title": "Needs your attention",
+    "upcomingHearings": "Upcoming Hearings",
+    "overdueTasks": "Overdue Tasks",
+    "pendingValidations": "Pending Validations"
+  }
+}
+

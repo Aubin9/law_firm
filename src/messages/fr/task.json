@@ -1,0 +1,16 @@
+{
+  "title": "Titre de la tâche",
+  "assignee": "Assigné à",
+  "dueDate": "Échéance",
+  "priority": "Priorité",
+  "status": {
+    "todo": "À faire",
+    "inProgress": "En cours",
+    "waiting": "En attente",
+    "toValidate": "À valider",
+    "done": "Terminé",
+    "cancelled": "Annulé"
+  },
+  "validationRequired": "Cette tâche nécessite la validation d'un avocat pour être terminée."
+}
+

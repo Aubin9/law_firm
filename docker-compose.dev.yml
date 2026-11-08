@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: firm-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lawfirm
+      POSTGRES_PASSWORD: change-me
+      POSTGRES_DB: lawfirm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    networks:
+      - firm-dev-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lawfirm -d lawfirm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  clamav:
+    image: clamav/clamav:latest
+    container_name: firm-clamav-dev
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav_data_dev:/var/lib/clamav
+    networks:
+      - firm-dev-net
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan /bin/sh || exit 0"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  postgres_data_dev:
+    name: firm_postgres_data_dev
+  clamav_data_dev:
+    name: firm_clamav_data_dev
+
+networks:
+  firm-dev-net:
+    name: firm_dev_network
+    driver: bridge

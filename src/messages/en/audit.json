@@ -1,0 +1,9 @@
+{
+  "title": "Audit Log",
+  "timestamp": "Timestamp",
+  "actor": "User",
+  "action": "Action",
+  "resource": "Resource",
+  "ip": "IP Address"
+}
+

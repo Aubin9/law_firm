@@ -1,0 +1,12 @@
+{
+  "type": "Party Type",
+  "individual": "Individual",
+  "company": "Company",
+  "displayName": "Display Name / Company Name",
+  "registrationNumber": "RCCM",
+  "taxId": "NIU",
+  "email": "Email",
+  "phone": "Phone",
+  "duplicateWarning": "Warning: A matching party already exists."
+}
+

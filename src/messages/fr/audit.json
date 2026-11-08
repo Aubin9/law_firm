@@ -1,0 +1,9 @@
+{
+  "title": "Journal d'audit",
+  "timestamp": "Horodatage",
+  "actor": "Utilisateur",
+  "action": "Action",
+  "resource": "Ressource",
+  "ip": "Adresse IP"
+}
+

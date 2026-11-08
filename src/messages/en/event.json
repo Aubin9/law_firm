@@ -1,0 +1,10 @@
+{
+  "type": "Event Type",
+  "hearing": "Hearing",
+  "filing": "Filing",
+  "notification": "Notification",
+  "appointment": "Appointment",
+  "proceduralDeadline": "Procedural Deadline",
+  "postpone": "Postpone Hearing"
+}
+

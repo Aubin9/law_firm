@@ -1,0 +1,7 @@
+{
+  "notFound": "Resource not found",
+  "unauthorized": "Session expired or unauthenticated",
+  "forbidden": "You do not have permission to access this matter or perform this action.",
+  "serverError": "An internal server error occurred. Please contact the administrator."
+}
+

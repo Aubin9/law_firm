@@ -1,0 +1,34 @@
+{
+  "searchPlaceholder": "Rechercher dossiers, parties, documents... (Ctrl+K)",
+  "notifications": "Notifications",
+  "language": "Langue",
+  "userMenu": {
+    "profile": "Mon profil",
+    "security": "Sécurité & 2FA",
+    "logout": "Déconnexion"
+  },
+  "nav": {
+    "workGroup": "Espace de travail",
+    "dashboard": "Tableau de bord",
+    "myTasks": "Mes tâches",
+    "calendar": "Calendrier",
+    "practiceGroup": "Pratique juridique",
+    "inquiries": "Prospects & Demandes",
+    "parties": "Clients & Parties",
+    "matters": "Dossiers",
+    "documents": "Documents",
+    "financeGroup": "Finance",
+    "invoices": "Factures & Règlements",
+    "expenses": "Dépenses & Débours",
+    "reportsGroup": "Pilotage",
+    "reports": "Rapports & Statistiques",
+    "adminGroup": "Administration",
+    "users": "Utilisateurs & Rôles",
+    "workflows": "Workflows",
+    "referenceData": "Données de référence",
+    "audit": "Journal d'audit",
+    "backups": "Sauvegardes & Restauration",
+    "integrations": "Intégrations"
+  }
+}
+

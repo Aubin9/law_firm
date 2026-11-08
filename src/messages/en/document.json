@@ -1,0 +1,13 @@
+{
+  "title": "Document Title",
+  "version": "Version",
+  "scanStatus": {
+    "pending": "Antivirus scanning in progress...",
+    "clean": "Clean file",
+    "infected": "Infected file (quarantined)",
+    "error": "Scan error"
+  },
+  "download": "Download",
+  "upload": "Upload document"
+}
+

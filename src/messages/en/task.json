@@ -1,0 +1,16 @@
+{
+  "title": "Task Title",
+  "assignee": "Assignee",
+  "dueDate": "Due Date",
+  "priority": "Priority",
+  "status": {
+    "todo": "To Do",
+    "inProgress": "In Progress",
+    "waiting": "Waiting",
+    "toValidate": "To Validate",
+    "done": "Done",
+    "cancelled": "Cancelled"
+  },
+  "validationRequired": "This task requires lawyer validation before moving to Done."
+}
+

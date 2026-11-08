@@ -1,0 +1,10 @@
+{
+  "type": "Type d'événement",
+  "hearing": "Audience",
+  "filing": "Dépôt d'acte",
+  "notification": "Notification",
+  "appointment": "Rendez-vous",
+  "proceduralDeadline": "Échéance procédurale",
+  "postpone": "Renvoyer l'audience"
+}
+

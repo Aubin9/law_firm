@@ -1,0 +1,7 @@
+{
+  "notFound": "Ressource introuvable",
+  "unauthorized": "Session expirée ou non authentifiée",
+  "forbidden": "Vous n'avez pas l'autorisation d'accéder à ce dossier ou d'exécuter cette action.",
+  "serverError": "Une erreur interne est survenue. Veuillez contacter l'administrateur."
+}
+

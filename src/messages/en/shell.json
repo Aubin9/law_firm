@@ -1,0 +1,34 @@
+{
+  "searchPlaceholder": "Search matters, parties, documents... (Ctrl+K)",
+  "notifications": "Notifications",
+  "language": "Language",
+  "userMenu": {
+    "profile": "My Profile",
+    "security": "Security & 2FA",
+    "logout": "Sign out"
+  },
+  "nav": {
+    "workGroup": "Workspace",
+    "dashboard": "Dashboard",
+    "myTasks": "My Tasks",
+    "calendar": "Calendar",
+    "practiceGroup": "Practice",
+    "inquiries": "Inquiries & Prospects",
+    "parties": "Clients & Parties",
+    "matters": "Matters",
+    "documents": "Documents",
+    "financeGroup": "Finance",
+    "invoices": "Invoices & Payments",
+    "expenses": "Expenses & Disbursements",
+    "reportsGroup": "Reports",
+    "reports": "Reports & Analytics",
+    "adminGroup": "Administration",
+    "users": "Users & Roles",
+    "workflows": "Workflows",
+    "referenceData": "Reference Data",
+    "audit": "Audit Log",
+    "backups": "Backups & Restore",
+    "integrations": "Integrations"
+  }
+}
+
