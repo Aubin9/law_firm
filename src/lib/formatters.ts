@@ -13,11 +13,11 @@ export const DEFAULT_CURRENCY = "XAF";
 export function formatLegalDate(
   value: Date | string | number | null | undefined,
   locale: "fr" | "en" = "fr",
-  includeTime = false
+  includeTime = false,
 ): string {
-  if (!value) return "—";
+  if (!value) return "-";
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "-";
 
   const langTag = locale === "en" ? "en-GB" : "fr-FR";
 
@@ -41,13 +41,13 @@ export function formatLegalDate(
     return `${datePart} · ${timePart}`;
   } catch {
     // Graceful fallback if ICU data is incomplete
-    return date.toISOString().split("T")[0];
+    return "—";
   }
 }
 
 export function formatLegalTime(
   value: Date | string | number | null | undefined,
-  locale: "fr" | "en" = "fr"
+  locale: "fr" | "en" = "fr",
 ): string {
   if (!value) return "—";
   const date = value instanceof Date ? value : new Date(value);
@@ -70,7 +70,7 @@ export function formatLegalTime(
 export function formatMoney(
   amount: number | string | null | undefined,
   currency = DEFAULT_CURRENCY,
-  locale: "fr" | "en" = "fr"
+  locale: "fr" | "en" = "fr",
 ): string {
   if (amount === null || amount === undefined || amount === "") {
     return "—";
@@ -89,7 +89,7 @@ export function formatMoney(
     {
       minimumFractionDigits: isZeroDecimals ? 0 : 2,
       maximumFractionDigits: isZeroDecimals ? 0 : 2,
-    }
+    },
   ).format(isZeroDecimals ? Math.round(numericValue) : numericValue);
 
   return `${formattedNumber} ${currency.toUpperCase()}`;
@@ -98,15 +98,14 @@ export function formatMoney(
 export function formatNumber(
   value: number | string | null | undefined,
   locale: "fr" | "en" = "fr",
-  decimals = 0
+  decimals = 0,
 ): string {
-  if (value === null || value === undefined || value === "") return "—";
+  if (value === null || value === undefined || value === "") return "-";
   const num = typeof value === "string" ? Number.parseFloat(value) : value;
-  if (Number.isNaN(num)) return "—";
+  if (Number.isNaN(num)) return "-";
 
   return new Intl.NumberFormat(locale === "en" ? "en-US" : "fr-FR", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(num);
 }
-

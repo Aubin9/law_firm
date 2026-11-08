@@ -63,7 +63,7 @@ const SAMPLE_MATTERS: SampleMatterRow[] = [
   {
     id: "1",
     reference: "DOS-2026-0014",
-    title: "Contentieux commercial & exécution — SABC c/ Afriland",
+    title: "Contentieux commercial & exécution - SABC c/ Afriland",
     client: "Société Anonyme des Brasseries du Cameroun (SABC)",
     category: "Contentieux commercial",
     leadLawyer: "Me Jean-Paul Mbarga",
@@ -91,7 +91,7 @@ const SAMPLE_MATTERS: SampleMatterRow[] = [
   {
     id: "3",
     reference: "DOS-2026-0022",
-    title: "Arbitrage CCJA OHADA — Rupture abusive de contrat",
+    title: "Arbitrage CCJA OHADA - Rupture abusive de contrat",
     client: "Groupe Fokou SA",
     category: "Droit des sociétés / OHADA",
     leadLawyer: "Me Jean-Paul Mbarga",
@@ -166,7 +166,7 @@ export function ComponentGalleryShowcase({
     React.useState(false);
   const [sidePanelOpen, setSidePanelOpen] = React.useState(false);
   const [selectedMatter, setSelectedMatter] = React.useState<SampleMatterRow>(
-    SAMPLE_MATTERS[0]
+    SAMPLE_MATTERS[0],
   );
 
   const columns = React.useMemo<ColumnDef<SampleMatterRow>[]>(
@@ -241,7 +241,7 @@ export function ComponentGalleryShowcase({
         ),
       },
     ],
-    [locale]
+    [locale],
   );
 
   return (
@@ -282,10 +282,7 @@ export function ComponentGalleryShowcase({
         }
         actions={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => setSidePanelOpen(true)}
-            >
+            <Button variant="secondary" onClick={() => setSidePanelOpen(true)}>
               <Eye className="h-4 w-4" aria-hidden="true" />
               <span>
                 {locale === "en"
@@ -293,13 +290,12 @@ export function ComponentGalleryShowcase({
                   : "Ouvrir le tiroir détail"}
               </span>
             </Button>
-            <Button
-              variant="primary"
-              onClick={() => setConfirmOpen(true)}
-            >
+            <Button variant="primary" onClick={() => setConfirmOpen(true)}>
               <Plus className="h-4 w-4" aria-hidden="true" />
               <span>
-                {locale === "en" ? "Test ConfirmDialog" : "Tester ConfirmDialog"}
+                {locale === "en"
+                  ? "Test ConfirmDialog"
+                  : "Tester ConfirmDialog"}
               </span>
             </Button>
           </>
@@ -336,7 +332,10 @@ export function ComponentGalleryShowcase({
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
             <div>
               <h2 className="text-h3 font-semibold text-primary">
-                1. {locale === "en" ? "Colour Tokens & Typography Scale" : "Tokens de Couleur & Échelle Typographique"}
+                1.{" "}
+                {locale === "en"
+                  ? "Colour Tokens & Typography Scale"
+                  : "Tokens de Couleur & Échelle Typographique"}
               </h2>
               <p className="text-caption text-muted-foreground">
                 {locale === "en"
@@ -348,20 +347,54 @@ export function ComponentGalleryShowcase({
 
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
             {[
-              { name: "Primary Navy", bg: "bg-primary text-primary-foreground", hex: "#1F2A44" },
-              { name: "Muted Gold", bg: "bg-accent text-primary-foreground", hex: "#B08D57" },
-              { name: "Warm Background", bg: "bg-background text-foreground border border-border", hex: "#F7F6F3" },
-              { name: "Surface Card", bg: "bg-surface text-foreground border border-border", hex: "#FFFFFF" },
-              { name: "Success", bg: "bg-success text-primary-foreground", hex: "#2E7D5B" },
-              { name: "Warning", bg: "bg-warning text-primary-foreground", hex: "#B7791F" },
-              { name: "Danger / Strict", bg: "bg-danger text-primary-foreground", hex: "#B3382C" },
-              { name: "Info / AI", bg: "bg-info text-primary-foreground", hex: "#2B6CB0" },
+              {
+                name: "Primary Navy",
+                bg: "bg-primary text-primary-foreground",
+                hex: "#1F2A44",
+              },
+              {
+                name: "Muted Gold",
+                bg: "bg-accent text-primary-foreground",
+                hex: "#B08D57",
+              },
+              {
+                name: "Warm Background",
+                bg: "bg-background text-foreground border border-border",
+                hex: "#F7F6F3",
+              },
+              {
+                name: "Surface Card",
+                bg: "bg-surface text-foreground border border-border",
+                hex: "#FFFFFF",
+              },
+              {
+                name: "Success",
+                bg: "bg-success text-primary-foreground",
+                hex: "#2E7D5B",
+              },
+              {
+                name: "Warning",
+                bg: "bg-warning text-primary-foreground",
+                hex: "#B7791F",
+              },
+              {
+                name: "Danger / Strict",
+                bg: "bg-danger text-primary-foreground",
+                hex: "#B3382C",
+              },
+              {
+                name: "Info / AI",
+                bg: "bg-info text-primary-foreground",
+                hex: "#2B6CB0",
+              },
             ].map((swatch) => (
               <div
                 key={swatch.name}
                 className="rounded-lg border border-border p-2 bg-surface space-y-1.5"
               >
-                <div className={`h-10 w-full rounded-md flex items-center justify-center font-mono text-caption ${swatch.bg}`}>
+                <div
+                  className={`h-10 w-full rounded-md flex items-center justify-center font-mono text-caption ${swatch.bg}`}
+                >
                   {swatch.hex}
                 </div>
                 <p className="text-caption font-medium text-foreground truncate">
@@ -374,7 +407,7 @@ export function ComponentGalleryShowcase({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
             <div className="rounded-lg border border-border bg-surface-muted/50 p-3.5">
               <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                Display — Source Serif 4
+                Display - Source Serif 4
               </p>
               <p className="mt-1 font-serif text-h2 font-semibold text-primary">
                 Cabinet Mbarga & Associés
@@ -382,7 +415,7 @@ export function ComponentGalleryShowcase({
             </div>
             <div className="rounded-lg border border-border bg-surface-muted/50 p-3.5">
               <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                Interface — Inter (Tabular Figures)
+                Interface - Inter (Tabular Figures)
               </p>
               <p className="mt-1 font-sans text-body font-medium text-foreground tabular-nums">
                 Audience de plaidoirie · 148 500 000 XAF
@@ -390,7 +423,7 @@ export function ComponentGalleryShowcase({
             </div>
             <div className="rounded-lg border border-border bg-surface-muted/50 p-3.5">
               <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                Monospace — JetBrains Mono
+                Monospace - JetBrains Mono
               </p>
               <p className="mt-1 font-mono text-body-sm font-semibold text-primary">
                 DOS-2026-0014 · RC/DLA/1994/B/1402
@@ -403,7 +436,10 @@ export function ComponentGalleryShowcase({
         <section className="rounded-lg border border-border bg-surface p-5 shadow-card space-y-5">
           <div className="border-b border-border pb-3">
             <h2 className="text-h3 font-semibold text-primary">
-              2. {locale === "en" ? "Status, Priority, Confidentiality & Domain Chips" : "Puces de Statut, Priorité, Confidentialité & Métadonnées"}
+              2.{" "}
+              {locale === "en"
+                ? "Status, Priority, Confidentiality & Domain Chips"
+                : "Puces de Statut, Priorité, Confidentialité & Métadonnées"}
             </h2>
             <p className="text-caption text-muted-foreground">
               {locale === "en"
@@ -415,7 +451,9 @@ export function ComponentGalleryShowcase({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2.5">
               <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                {locale === "en" ? "Workflow Status Chips" : "Statuts de Workflow"}
+                {locale === "en"
+                  ? "Workflow Status Chips"
+                  : "Statuts de Workflow"}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <StatusChip label="Nouveau" tone="neutral" />
@@ -442,10 +480,16 @@ export function ComponentGalleryShowcase({
 
             <div className="space-y-2.5">
               <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-                {locale === "en" ? "Confidentiality Levels" : "Niveaux de Confidentialité"}
+                {locale === "en"
+                  ? "Confidentiality Levels"
+                  : "Niveaux de Confidentialité"}
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <ConfidentialityChip level="STANDARD" showStandard locale={locale} />
+                <ConfidentialityChip
+                  level="STANDARD"
+                  showStandard
+                  locale={locale}
+                />
                 <ConfidentialityChip level="RESTRICTED" locale={locale} />
                 <ConfidentialityChip level="STRICT" locale={locale} />
               </div>
@@ -464,7 +508,10 @@ export function ComponentGalleryShowcase({
                 <ScanStatusChip status="INFECTED" locale={locale} />
                 <AiSuggestionChip locale={locale} />
                 <ProceduralDeadlineChip validatedBy={null} locale={locale} />
-                <ProceduralDeadlineChip validatedBy="Me Mbarga" locale={locale} />
+                <ProceduralDeadlineChip
+                  validatedBy="Me Mbarga"
+                  locale={locale}
+                />
               </div>
             </div>
           </div>
@@ -472,19 +519,27 @@ export function ComponentGalleryShowcase({
           {/* Buttons Row */}
           <div className="pt-3 border-t border-border space-y-2.5">
             <p className="text-caption font-semibold uppercase tracking-wider text-muted-foreground">
-              {locale === "en" ? "Action Buttons & States" : "Boutons d'Action & États"}
+              {locale === "en"
+                ? "Action Buttons & States"
+                : "Boutons d'Action & États"}
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Button variant="primary">
                 <Briefcase className="h-4 w-4" aria-hidden="true" />
-                <span>{locale === "en" ? "Open Matter" : "Ouvrir le dossier"}</span>
+                <span>
+                  {locale === "en" ? "Open Matter" : "Ouvrir le dossier"}
+                </span>
               </Button>
               <Button variant="secondary">
                 <FileText className="h-4 w-4" aria-hidden="true" />
-                <span>{locale === "en" ? "Upload Document" : "Déposer une pièce"}</span>
+                <span>
+                  {locale === "en" ? "Upload Document" : "Déposer une pièce"}
+                </span>
               </Button>
               <Button variant="ghost">
-                <span>{locale === "en" ? "Secondary Action" : "Action secondaire"}</span>
+                <span>
+                  {locale === "en" ? "Secondary Action" : "Action secondaire"}
+                </span>
               </Button>
               <Button
                 variant="destructive"
@@ -498,7 +553,9 @@ export function ComponentGalleryShowcase({
                 </span>
               </Button>
               <Button variant="primary" loading>
-                <span>{locale === "en" ? "Saving..." : "Enregistrement..."}</span>
+                <span>
+                  {locale === "en" ? "Saving..." : "Enregistrement..."}
+                </span>
               </Button>
             </div>
           </div>
@@ -509,7 +566,10 @@ export function ComponentGalleryShowcase({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
             <div>
               <h2 className="text-h3 font-semibold text-primary">
-                3. {locale === "en" ? "DataTable (Sorting, Column Visibility, Skeletons, Mobile Cards)" : "DataTable (Tri, Colonnes, Densité, Squelette & Cartes Mobiles)"}
+                3.{" "}
+                {locale === "en"
+                  ? "DataTable (Sorting, Column Visibility, Skeletons, Mobile Cards)"
+                  : "DataTable (Tri, Colonnes, Densité, Squelette & Cartes Mobiles)"}
               </h2>
               <p className="text-caption text-muted-foreground">
                 {locale === "en"
@@ -635,7 +695,7 @@ export function ComponentGalleryShowcase({
                   >
                     <Input
                       id="jurisdiction-input"
-                      defaultValue="Tribunal de Grande Instance du Wouri (Douala-Bonanjo) — Chambre Commerciale"
+                      defaultValue="Tribunal de Grande Instance du Wouri (Douala-Bonanjo) - Chambre Commerciale"
                     />
                   </FormField>
 
@@ -680,7 +740,7 @@ export function ComponentGalleryShowcase({
                     alert(
                       locale === "en"
                         ? `Opening drawer to create new party: "${q || "New Party"}"`
-                        : `Ouverture du tiroir de création pour : « ${q || "Nouvelle partie"} »`
+                        : `Ouverture du tiroir de création pour : « ${q || "Nouvelle partie"} »`,
                     )
                   }
                   locale={locale}
@@ -759,7 +819,10 @@ export function ComponentGalleryShowcase({
           <div className="lg:col-span-5 space-y-6">
             <div className="rounded-lg border border-border bg-surface p-5 shadow-card space-y-4">
               <h3 className="text-h3 font-semibold text-primary">
-                5. {locale === "en" ? "MoneyCell (XAF Tabular Formatting)" : "MoneyCell (Formatage Tabulaire XAF)"}
+                5.{" "}
+                {locale === "en"
+                  ? "MoneyCell (XAF Tabular Formatting)"
+                  : "MoneyCell (Formatage Tabulaire XAF)"}
               </h3>
               <p className="text-caption text-muted-foreground">
                 {locale === "en"
@@ -770,13 +833,17 @@ export function ComponentGalleryShowcase({
               <div className="divide-y divide-border rounded-lg border border-border">
                 <div className="flex items-center justify-between px-4 py-2.5">
                   <span className="text-body-sm text-foreground">
-                    {locale === "en" ? "Invoiced Fee Agreement" : "Convention d'honoraires facturée"}
+                    {locale === "en"
+                      ? "Invoiced Fee Agreement"
+                      : "Convention d'honoraires facturée"}
                   </span>
                   <MoneyCell amount={12500000} locale={locale} align="left" />
                 </div>
                 <div className="flex items-center justify-between px-4 py-2.5">
                   <span className="text-body-sm text-foreground">
-                    {locale === "en" ? "Validated Payments Received" : "Règlements validés encaissés"}
+                    {locale === "en"
+                      ? "Validated Payments Received"
+                      : "Règlements validés encaissés"}
                   </span>
                   <MoneyCell
                     amount={8000000}
@@ -787,7 +854,9 @@ export function ComponentGalleryShowcase({
                 </div>
                 <div className="flex items-center justify-between bg-surface-muted/50 px-4 py-2.5">
                   <span className="text-body-sm font-semibold text-foreground">
-                    {locale === "en" ? "Computed Remaining Balance" : "Solde restant dû (calculé)"}
+                    {locale === "en"
+                      ? "Computed Remaining Balance"
+                      : "Solde restant dû (calculé)"}
                   </span>
                   <MoneyCell
                     amount={4500000}
@@ -801,7 +870,10 @@ export function ComponentGalleryShowcase({
 
             <div className="space-y-4">
               <h3 className="text-h3 font-semibold text-primary">
-                6. {locale === "en" ? "Standard Feedback States" : "États Standardisés (Vide, Erreur, Accès Refusé)"}
+                6.{" "}
+                {locale === "en"
+                  ? "Standard Feedback States"
+                  : "États Standardisés (Vide, Erreur, Accès Refusé)"}
               </h3>
               <EmptyState
                 title={
@@ -818,7 +890,9 @@ export function ComponentGalleryShowcase({
                   <Button variant="secondary" size="sm">
                     <Plus className="h-4 w-4" aria-hidden="true" />
                     <span>
-                      {locale === "en" ? "Upload first document" : "Déposer un document"}
+                      {locale === "en"
+                        ? "Upload first document"
+                        : "Déposer un document"}
                     </span>
                   </Button>
                 }
@@ -962,7 +1036,9 @@ export function ComponentGalleryShowcase({
             </div>
             <div>
               <p className="text-caption text-muted-foreground">
-                {locale === "en" ? "Next Hearing / Deadline" : "Prochaine audience"}
+                {locale === "en"
+                  ? "Next Hearing / Deadline"
+                  : "Prochaine audience"}
               </p>
               <p className="font-mono text-caption font-semibold text-primary">
                 {formatLegalDate(selectedMatter.nextDeadline, locale, true)}
@@ -989,18 +1065,25 @@ export function ComponentGalleryShowcase({
             <div className="space-y-3 border-l-2 border-border pl-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <Gavel className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                  <Gavel
+                    className="h-3.5 w-3.5 text-primary"
+                    aria-hidden="true"
+                  />
                   <span className="font-mono text-caption text-muted-foreground">
                     06 nov. 2026 · 10:15
                   </span>
                 </div>
                 <p className="text-body-sm font-medium text-foreground">
-                  Dépôt du mémoire en réplique validé par {selectedMatter.leadLawyer}
+                  Dépôt du mémoire en réplique validé par{" "}
+                  {selectedMatter.leadLawyer}
                 </p>
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <Sparkles className="h-3.5 w-3.5 text-info" aria-hidden="true" />
+                  <Sparkles
+                    className="h-3.5 w-3.5 text-info"
+                    aria-hidden="true"
+                  />
                   <span className="font-mono text-caption text-muted-foreground">
                     02 nov. 2026 · 16:40
                   </span>
@@ -1016,4 +1099,3 @@ export function ComponentGalleryShowcase({
     </AppShell>
   );
 }
-

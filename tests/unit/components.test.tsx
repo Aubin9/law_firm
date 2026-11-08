@@ -23,7 +23,7 @@ describe("Design System & Shared Legal Components", () => {
     const formattedEn = formatMoney(1500000, "XAF", "en");
     expect(formattedEn).toBe("1,500,000 XAF");
 
-    expect(formatMoney(null)).toBe("—");
+    expect(formatMoney(null)).toBe("-");
   });
 
   it("formats dates in Africa/Douala timezone by locale", () => {
@@ -42,7 +42,7 @@ describe("Design System & Shared Legal Components", () => {
         <ConfidentialityChip level="STRICT" locale="fr" />
         <ConfidentialityChip level="STANDARD" locale="fr" />
         <ScanStatusChip status="INFECTED" locale="fr" />
-      </div>
+      </div>,
     );
 
     expect(screen.getByText("En cours")).toBeDefined();
@@ -63,15 +63,14 @@ describe("Design System & Shared Legal Components", () => {
         />
         <ErrorState referenceCode="ERR-TEST-01" locale="fr" />
         <DeniedState locale="en" />
-      </div>
+      </div>,
     );
 
     expect(screen.getByText("250,000 XAF")).toBeDefined();
     expect(screen.getByText("Aucun dossier")).toBeDefined();
     expect(screen.getByText("ERR-TEST-01")).toBeDefined();
     expect(
-      screen.getByText("You do not have access to this item")
+      screen.getByText("You do not have access to this item"),
     ).toBeDefined();
   });
 });
-

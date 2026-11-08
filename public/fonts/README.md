@@ -8,7 +8,7 @@ Drop the following `.woff2` variable or static font files into `public/fonts/`:
 
 1. **Inter (UI & Tabular Numbers)**
    - `public/fonts/Inter-Variable.woff2` (weights `400`, `500`, `600`)
-2. **Source Serif 4 (Executive Display — Dashboard & Login Headings)**
+2. **Source Serif 4 (Executive Display - Dashboard & Login Headings)**
    - `public/fonts/SourceSerif4-Variable.woff2` (weights `400`, `600`)
 3. **JetBrains Mono (Case Numbers, Matter References, IDs, Hashes)**
    - `public/fonts/JetBrainsMono-Variable.woff2` (weights `400`, `500`, `600`)
@@ -17,4 +17,3 @@ Drop the following `.woff2` variable or static font files into `public/fonts/`:
 
 - `@font-face` declarations in `src/app/globals.css` and font definitions in `src/lib/fonts.ts` reference these local files and expose `--font-inter`, `--font-source-serif`, and `--font-jetbrains-mono`.
 - Until the `.woff2` files are placed in this folder, the platform gracefully falls back to local system equivalents without making any external network requests.
-

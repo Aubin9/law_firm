@@ -333,8 +333,8 @@ export function AppShell({
       group: locale === "en" ? "Today" : "Aujourd'hui",
       title:
         locale === "en"
-          ? "Hearing tomorrow at 08:30 — TGI Douala-Bonanjo"
-          : "Audience demain à 08h30 — TGI Douala-Bonanjo",
+          ? "Hearing tomorrow at 08:30 - TGI Douala-Bonanjo"
+          : "Audience demain à 08h30 - TGI Douala-Bonanjo",
       meta: "DOS-2026-0014 · SABC c/ État du Cameroun",
       time: "Il y a 25 min",
     },
@@ -366,7 +366,7 @@ export function AppShell({
       <div
         className={cn(
           "flex h-14 items-center justify-between border-b border-border px-3.5",
-          collapsed && !isMobile && "justify-center px-2"
+          collapsed && !isMobile && "justify-center px-2",
         )}
       >
         <a
@@ -433,7 +433,7 @@ export function AppShell({
                     collapsed && !isMobile && "justify-center px-0 rounded-lg",
                     active
                       ? "border-l-[3px] border-accent bg-primary-soft font-semibold text-primary"
-                      : "border-l-[3px] border-transparent text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                      : "border-l-[3px] border-transparent text-muted-foreground hover:bg-surface-muted hover:text-foreground",
                   )}
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -442,7 +442,7 @@ export function AppShell({
                         "h-4 w-4 shrink-0 transition-colors",
                         active
                           ? "text-primary"
-                          : "text-muted-foreground group-hover:text-foreground"
+                          : "text-muted-foreground group-hover:text-foreground",
                       )}
                       aria-hidden="true"
                     />
@@ -457,7 +457,7 @@ export function AppShell({
                         "rounded-chip px-2 py-0.5 font-mono text-[11px] font-semibold tabular-nums",
                         active
                           ? "bg-primary text-primary-foreground"
-                          : "bg-surface-muted text-muted-foreground"
+                          : "bg-surface-muted text-muted-foreground",
                       )}
                     >
                       {item.badge}
@@ -480,10 +480,13 @@ export function AppShell({
                 pathname.includes("/dev/components")
                   ? "bg-accent-soft text-primary font-semibold border border-accent/40"
                   : "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
-                collapsed && !isMobile && "justify-center px-0"
+                collapsed && !isMobile && "justify-center px-0",
               )}
             >
-              <Sparkles className="h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
+              <Sparkles
+                className="h-4 w-4 shrink-0 text-accent"
+                aria-hidden="true"
+              />
               {(!collapsed || isMobile) && (
                 <span className="truncate">
                   {locale === "en"
@@ -535,7 +538,7 @@ export function AppShell({
       <aside
         className={cn(
           "hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:flex-col border-r border-border transition-all duration-200",
-          collapsed ? "lg:w-[64px]" : "lg:w-[248px]"
+          collapsed ? "lg:w-[64px]" : "lg:w-[248px]",
         )}
       >
         {renderSidebarNavigation(false)}
@@ -564,7 +567,7 @@ export function AppShell({
       <div
         className={cn(
           "flex flex-1 flex-col min-w-0 pb-16 lg:pb-0 transition-all duration-200",
-          collapsed ? "lg:pl-[64px]" : "lg:pl-[248px]"
+          collapsed ? "lg:pl-[64px]" : "lg:pl-[248px]",
         )}
       >
         {/* Top Bar (56px) */}
@@ -696,7 +699,10 @@ export function AppShell({
                       onClick={() => setQuickCreateOpen(false)}
                       className="flex items-center gap-2 rounded-md px-2.5 py-2 text-body-sm text-foreground hover:bg-surface-muted transition-colors"
                     >
-                      <Plus className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+                      <Plus
+                        className="h-3.5 w-3.5 text-accent"
+                        aria-hidden="true"
+                      />
                       <span>{locale === "en" ? act.labelEn : act.labelFr}</span>
                     </a>
                   ))}
@@ -792,7 +798,9 @@ export function AppShell({
             >
               <span
                 className={cn(
-                  locale === "fr" ? "text-primary font-bold" : "text-muted-foreground"
+                  locale === "fr"
+                    ? "text-primary font-bold"
+                    : "text-muted-foreground",
                 )}
               >
                 FR
@@ -802,7 +810,9 @@ export function AppShell({
               </span>
               <span
                 className={cn(
-                  locale === "en" ? "text-primary font-bold" : "text-muted-foreground"
+                  locale === "en"
+                    ? "text-primary font-bold"
+                    : "text-muted-foreground",
                 )}
               >
                 EN
@@ -851,7 +861,10 @@ export function AppShell({
                       role="menuitem"
                       className="flex items-center gap-2.5 rounded-md px-3 py-2 text-body-sm text-foreground hover:bg-surface-muted"
                     >
-                      <UserIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <UserIcon
+                        className="h-4 w-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <span>
                         {locale === "en" ? "My Profile" : "Mon profil"}
                       </span>
@@ -861,7 +874,10 @@ export function AppShell({
                       role="menuitem"
                       className="flex items-center gap-2.5 rounded-md px-3 py-2 text-body-sm text-foreground hover:bg-surface-muted"
                     >
-                      <KeyRound className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <KeyRound
+                        className="h-4 w-4 text-muted-foreground"
+                        aria-hidden="true"
+                      />
                       <span>
                         {locale === "en"
                           ? "Security & 2FA (TOTP)"
@@ -893,7 +909,7 @@ export function AppShell({
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation Bar (< lg) — DESIGN.md Section 3.1 */}
+      {/* Mobile Bottom Navigation Bar (< lg) - DESIGN.md Section 3.1 */}
       <nav
         aria-label={
           locale === "en" ? "Mobile quick navigation" : "Navigation mobile"
@@ -906,7 +922,7 @@ export function AppShell({
             "flex flex-col items-center justify-center gap-0.5 min-w-[60px] py-1 text-[11px] font-medium",
             isItemActive("/dashboard")
               ? "text-primary font-semibold"
-              : "text-muted-foreground"
+              : "text-muted-foreground",
           )}
         >
           <LayoutDashboard className="h-5 w-5" aria-hidden="true" />
@@ -919,7 +935,7 @@ export function AppShell({
             "flex flex-col items-center justify-center gap-0.5 min-w-[60px] py-1 text-[11px] font-medium",
             isItemActive("/tasks")
               ? "text-primary font-semibold"
-              : "text-muted-foreground"
+              : "text-muted-foreground",
           )}
         >
           <CheckSquare className="h-5 w-5" aria-hidden="true" />
@@ -941,7 +957,7 @@ export function AppShell({
             "flex flex-col items-center justify-center gap-0.5 min-w-[60px] py-1 text-[11px] font-medium",
             isItemActive("/calendar")
               ? "text-primary font-semibold"
-              : "text-muted-foreground"
+              : "text-muted-foreground",
           )}
         >
           <CalendarDays className="h-5 w-5" aria-hidden="true" />
@@ -954,7 +970,7 @@ export function AppShell({
             "flex flex-col items-center justify-center gap-0.5 min-w-[60px] py-1 text-[11px] font-medium",
             isItemActive("/matters")
               ? "text-primary font-semibold"
-              : "text-muted-foreground"
+              : "text-muted-foreground",
           )}
         >
           <Briefcase className="h-5 w-5" aria-hidden="true" />
@@ -1039,7 +1055,7 @@ export function AppShell({
                         DOS-2026-0008
                       </span>
                       <span className="truncate font-medium text-foreground">
-                        Restructuration OHADA — Groupe Fokou SA
+                        Restructuration OHADA - Groupe Fokou SA
                       </span>
                     </div>
                     <span className="text-caption text-muted-foreground">
@@ -1079,4 +1095,3 @@ export function AppShell({
     </div>
   );
 }
-

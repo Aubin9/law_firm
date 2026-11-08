@@ -110,7 +110,10 @@ export default function DashboardPage({
                     ? "Pending Validations"
                     : "Validations en attente"}
                 </span>
-                <FileCheck2 className="h-4 w-4 text-warning" aria-hidden="true" />
+                <FileCheck2
+                  className="h-4 w-4 text-warning"
+                  aria-hidden="true"
+                />
               </div>
               <p className="mt-2 font-mono text-h2 font-semibold text-warning tabular-nums">
                 3
@@ -166,7 +169,10 @@ export default function DashboardPage({
           <div className="rounded-lg border border-border bg-surface p-5 shadow-card space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
-                <CalendarDays className="h-4 w-4 text-primary" aria-hidden="true" />
+                <CalendarDays
+                  className="h-4 w-4 text-primary"
+                  aria-hidden="true"
+                />
                 <h3 className="text-h3 font-semibold text-primary">
                   {locale === "en"
                     ? "Upcoming Hearings & Deadlines"
@@ -182,10 +188,13 @@ export default function DashboardPage({
                   <span className="rounded bg-surface-muted px-2 py-0.5 font-mono text-caption font-semibold text-primary border border-border">
                     DOS-2026-0014
                   </span>
-                  <ProceduralDeadlineChip validatedBy="Me Mbarga" locale={locale} />
+                  <ProceduralDeadlineChip
+                    validatedBy="Me Mbarga"
+                    locale={locale}
+                  />
                 </div>
                 <p className="text-body-sm font-semibold text-foreground">
-                  Audience de mise en état — SABC c/ Afriland First Bank
+                  Audience de mise en état - SABC c/ Afriland First Bank
                 </p>
                 <p className="font-mono text-caption text-muted-foreground">
                   10 nov. 2026 · 08:30 · TGI du Wouri (Chambre commerciale)
@@ -200,7 +209,7 @@ export default function DashboardPage({
                   <ProceduralDeadlineChip validatedBy={null} locale={locale} />
                 </div>
                 <p className="text-body-sm font-semibold text-foreground">
-                  Dépôt du mémoire en défense CCJA — Groupe Fokou SA
+                  Dépôt du mémoire en défense CCJA - Groupe Fokou SA
                 </p>
                 <p className="font-mono text-caption text-muted-foreground">
                   12 nov. 2026 · 15:00 · Greffe CCJA
@@ -213,7 +222,10 @@ export default function DashboardPage({
           <div className="rounded-lg border border-border bg-surface p-5 shadow-card space-y-4">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div className="flex items-center gap-2">
-                <FileCheck2 className="h-4 w-4 text-accent" aria-hidden="true" />
+                <FileCheck2
+                  className="h-4 w-4 text-accent"
+                  aria-hidden="true"
+                />
                 <h3 className="text-h3 font-semibold text-primary">
                   {locale === "en"
                     ? "Tasks & Validations Queue"
@@ -230,7 +242,8 @@ export default function DashboardPage({
                   <ConfidentialityChip level="STRICT" locale={locale} />
                 </div>
                 <p className="text-body-sm font-semibold text-foreground">
-                  Valider le protocole transactionnel v2 avant transmission client
+                  Valider le protocole transactionnel v2 avant transmission
+                  client
                 </p>
                 <p className="text-caption text-muted-foreground">
                   DOS-2026-0022 · Préparé par Me Nadine Ekani
@@ -243,7 +256,8 @@ export default function DashboardPage({
                   <StatusChip label="À valider" tone="warning" />
                 </div>
                 <p className="text-body-sm font-semibold text-foreground">
-                  Statuer sur la vérification de conflit d&apos;intérêts (INQ-2026-0044)
+                  Statuer sur la vérification de conflit d&apos;intérêts
+                  (INQ-2026-0044)
                 </p>
                 <p className="text-caption text-muted-foreground">
                   Prospect : Société Camerounaise de Dépôts Pétroliers (SCDP)

@@ -4,17 +4,17 @@ import { cn } from "@/lib/utils";
 export function formatMoney(
   amount: number | string | null | undefined,
   currency = "XAF",
-  locale: "fr" | "en" = "fr"
+  locale: "fr" | "en" = "fr",
 ): string {
   if (amount === null || amount === undefined || amount === "") {
-    return "—";
+    return "-";
   }
 
   const numericValue =
     typeof amount === "string" ? Number.parseFloat(amount) : amount;
 
   if (Number.isNaN(numericValue)) {
-    return "—";
+    return "-";
   }
 
   const isZeroDecimals = currency.toUpperCase() === "XAF";
@@ -23,7 +23,7 @@ export function formatMoney(
     {
       minimumFractionDigits: isZeroDecimals ? 0 : 2,
       maximumFractionDigits: isZeroDecimals ? 0 : 2,
-    }
+    },
   ).format(isZeroDecimals ? Math.round(numericValue) : numericValue);
 
   return `${formattedNumber} ${currency.toUpperCase()}`;
@@ -57,7 +57,7 @@ export function MoneyCell({
         tone === "positive" && "font-semibold text-success",
         tone === "danger" && "font-semibold text-danger",
         tone === "muted" && "text-muted-foreground",
-        className
+        className,
       )}
       {...props}
     >
@@ -65,4 +65,3 @@ export function MoneyCell({
     </span>
   );
 }
-

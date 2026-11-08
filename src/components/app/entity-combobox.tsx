@@ -57,7 +57,7 @@ export function EntityCombobox({
 
   const selectedOption = React.useMemo(
     () => options.find((opt) => opt.id === value),
-    [options, value]
+    [options, value],
   );
 
   const filtered = React.useMemo(() => {
@@ -67,7 +67,7 @@ export function EntityCombobox({
       (opt) =>
         opt.label.toLowerCase().includes(q) ||
         opt.sublabel?.toLowerCase().includes(q) ||
-        opt.code?.toLowerCase().includes(q)
+        opt.code?.toLowerCase().includes(q),
     );
   }, [options, query]);
 
@@ -77,7 +77,8 @@ export function EntityCombobox({
     const q = query.trim().toLowerCase();
     if (q.length < 3) return null;
     const match = options.find(
-      (opt) => opt.label.toLowerCase() === q || opt.label.toLowerCase().includes(q)
+      (opt) =>
+        opt.label.toLowerCase() === q || opt.label.toLowerCase().includes(q),
     );
     if (!match) return null;
     return locale === "en"
@@ -119,7 +120,7 @@ export function EntityCombobox({
         onClick={() => setOpen((prev) => !prev)}
         className={cn(
           "flex min-h-[44px] sm:min-h-[40px] w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-left text-body-sm shadow-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:bg-surface-muted disabled:opacity-60",
-          hasError && "border-danger focus-visible:ring-danger"
+          hasError && "border-danger focus-visible:ring-danger",
         )}
       >
         {selectedOption ? (
@@ -134,7 +135,7 @@ export function EntityCombobox({
             </span>
             {selectedOption.sublabel && (
               <span className="text-caption text-muted-foreground truncate">
-                — {selectedOption.sublabel}
+                - {selectedOption.sublabel}
               </span>
             )}
           </span>
@@ -172,7 +173,10 @@ export function EntityCombobox({
               role="status"
               className="flex items-center gap-2 border-b border-warning/25 bg-warning-soft px-3 py-2 text-caption text-warning-foreground"
             >
-              <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <AlertTriangle
+                className="h-3.5 w-3.5 shrink-0"
+                aria-hidden="true"
+              />
               <span>{detectedDuplicate}</span>
             </div>
           )}
@@ -199,7 +203,8 @@ export function EntityCombobox({
                       }}
                       className={cn(
                         "flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-body-sm transition-colors hover:bg-surface-muted",
-                        isSelected && "bg-primary-soft/60 font-medium text-primary"
+                        isSelected &&
+                          "bg-primary-soft/60 font-medium text-primary",
                       )}
                     >
                       <div className="min-w-0 flex-1">
@@ -260,4 +265,3 @@ export function EntityCombobox({
     </div>
   );
 }
-

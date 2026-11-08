@@ -10,18 +10,9 @@ import {
 import { cn } from "@/lib/utils";
 
 export type StatusTone =
-  | "neutral"
-  | "primary"
-  | "success"
-  | "warning"
-  | "danger"
-  | "info"
-  | "accent";
+  "neutral" | "primary" | "success" | "warning" | "danger" | "info" | "accent";
 
-const toneClasses: Record<
-  StatusTone,
-  { container: string; dot: string }
-> = {
+const toneClasses: Record<StatusTone, { container: string; dot: string }> = {
   neutral: {
     container: "border-border bg-surface-muted text-foreground",
     dot: "bg-muted-foreground",
@@ -52,8 +43,7 @@ const toneClasses: Record<
   },
 };
 
-export interface StatusChipProps
-  extends React.HTMLAttributes<HTMLSpanElement> {
+export interface StatusChipProps extends React.HTMLAttributes<HTMLSpanElement> {
   label: string;
   tone?: StatusTone;
   showDot?: boolean;
@@ -74,7 +64,7 @@ export function StatusChip({
       className={cn(
         "inline-flex items-center gap-1.5 rounded-chip border px-2.5 py-0.5 text-caption font-medium whitespace-nowrap",
         styles.container,
-        className
+        className,
       )}
       {...props}
     >
@@ -142,7 +132,9 @@ export function ScanStatusChip({
         label={locale === "en" ? "Scan clean" : "Fichier sain"}
         tone="success"
         showDot={false}
-        icon={<ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+        icon={
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        }
         className={className}
       />
     );
@@ -220,8 +212,8 @@ export function ProceduralDeadlineChip({
       ? `Validated by ${validatedBy}`
       : `Validée par ${validatedBy}`
     : locale === "en"
-      ? "Procedural — To validate"
-      : "Échéance procédurale — À valider";
+      ? "Procedural - To validate"
+      : "Échéance procédurale - À valider";
 
   return (
     <StatusChip
@@ -229,13 +221,9 @@ export function ProceduralDeadlineChip({
       tone={validatedBy ? "accent" : "warning"}
       showDot={false}
       icon={
-        <Flag
-          className="h-3.5 w-3.5 shrink-0 text-accent"
-          aria-hidden="true"
-        />
+        <Flag className="h-3.5 w-3.5 shrink-0 text-accent" aria-hidden="true" />
       }
       className={className}
     />
   );
 }
-
