@@ -7,6 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "prisma:migrate": "npx prisma migrate dev --name init",
     "worker": "tsx src/server/jobs/worker.ts",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
@@ -54,4 +55,3 @@
     "vitest": "^2.1.5"
   }
 }
-
