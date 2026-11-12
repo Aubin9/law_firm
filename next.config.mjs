@@ -18,8 +18,12 @@ const cspHeader = `
 `.replace(/\s{2,}/g, ' ').trim();
 
 const nextConfig = {
+  output: "standalone",
   reactStrictMode: true,
   poweredByHeader: false,
+  experimental: {
+    serverComponentsExternalPackages: ["@node-rs/argon2", "@prisma/client", "prisma"],
+  },
   // Telemetry is also disabled via NEXT_TELEMETRY_DISABLED=1 in env
   async headers() {
     return [

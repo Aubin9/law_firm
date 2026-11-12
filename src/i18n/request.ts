@@ -5,9 +5,10 @@ import path from "path";
 
 export default getRequestConfig(async ({ locale }) => {
   // Validate that the incoming `locale` parameter is valid
-  const targetLocale = routing.locales.includes(locale as any)
-    ? locale
-    : routing.defaultLocale;
+  const targetLocale: string =
+    locale && routing.locales.includes(locale as any)
+      ? (locale as string)
+      : routing.defaultLocale;
 
   // Load and merge all namespace files from src/messages/[locale]/*.json
   const messagesDir = path.join(process.cwd(), "src", "messages", targetLocale);

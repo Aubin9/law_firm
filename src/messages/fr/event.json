@@ -1,10 +1,67 @@
 {
+  "title": "Calendrier & Audiences",
+  "subtitle": "Planning des audiences judiciaires, échéances procédurales et rendez-vous du cabinet.",
   "type": "Type d'événement",
   "hearing": "Audience",
   "filing": "Dépôt d'acte",
   "notification": "Notification",
   "appointment": "Rendez-vous",
   "proceduralDeadline": "Échéance procédurale",
-  "postpone": "Renvoyer l'audience"
+  "internalDeadline": "Échéance interne",
+  "consultation": "Consultation",
+  "meeting": "Réunion",
+  "decision": "Décision",
+  "other": "Autre",
+  "postpone": "Renvoyer l'audience",
+  "postponed": "Renvoyé",
+  "scheduled": "Programmé",
+  "done": "Terminé",
+  "cancelled": "Annulé",
+  "toValidate": "À valider par un avocat",
+  "validatedBy": "Validé par {name}",
+  "validateAction": "Valider l'échéance",
+  "cancelAction": "Annuler l'événement",
+  "newEvent": "Nouvel événement",
+  "scheduleHearing": "Planifier une audience",
+  "views": {
+    "month": "Mois",
+    "week": "Semaine",
+    "day": "Jour",
+    "agenda": "Planning / Liste"
+  },
+  "filters": {
+    "all": "Tous les événements",
+    "hearings": "Audiences uniquement",
+    "deadlines": "Échéances procédurales",
+    "appointments": "Rendez-vous & Réunions",
+    "matter": "Dossier",
+    "lawyer": "Collaborateur / Avocat"
+  },
+  "fields": {
+    "title": "Objet / Titre de l'événement",
+    "type": "Nature de l'événement",
+    "startsAt": "Date et heure de début",
+    "endsAt": "Date et heure de fin",
+    "allDay": "Toute la journée",
+    "location": "Lieu / Juridiction (ex. TGI Douala, Salle 2)",
+    "description": "Description / Ordre du jour",
+    "source": "Source légale ou judiciaire (obligatoire pour échéance procédurale)",
+    "matter": "Dossier rattaché",
+    "procedure": "Procédure judiciaire",
+    "attendees": "Intervenants / Avocats convoqués",
+    "reminders": "Rappels automatiques"
+  },
+  "postponeModal": {
+    "title": "Renvoyer l'audience ou reporter l'événement",
+    "description": "Conformément à la déontologie, l'audience précédente sera marquée comme renvoyée et conservée dans l'historique sans écrasement. Une nouvelle audience liée sera créée.",
+    "newDate": "Nouvelle date d'audience",
+    "reason": "Motif du renvoi (ex. Non-comparution de l'adverse, communication de pièces)",
+    "newLocation": "Nouveau lieu / Salle (optionnel)",
+    "submit": "Confirmer le renvoi",
+    "cancel": "Annuler"
+  },
+  "emptyState": {
+    "title": "Aucun événement prévu pour cette période",
+    "description": "Utilisez le bouton ci-dessus pour planifier une audience, un rendez-vous ou enregistrer un délai de procédure."
+  }
 }
-

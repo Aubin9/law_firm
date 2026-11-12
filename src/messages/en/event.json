@@ -1,10 +1,67 @@
 {
+  "title": "Calendar & Hearings",
+  "subtitle": "Schedule of court hearings, procedural deadlines, and firm appointments.",
   "type": "Event Type",
   "hearing": "Hearing",
-  "filing": "Filing",
+  "filing": "Court Filing",
   "notification": "Notification",
   "appointment": "Appointment",
   "proceduralDeadline": "Procedural Deadline",
-  "postpone": "Postpone Hearing"
+  "internalDeadline": "Internal Deadline",
+  "consultation": "Consultation",
+  "meeting": "Meeting",
+  "decision": "Decision",
+  "other": "Other",
+  "postpone": "Postpone Hearing",
+  "postponed": "Postponed",
+  "scheduled": "Scheduled",
+  "done": "Completed",
+  "cancelled": "Cancelled",
+  "toValidate": "Lawyer validation required",
+  "validatedBy": "Validated by {name}",
+  "validateAction": "Validate Deadline",
+  "cancelAction": "Cancel Event",
+  "newEvent": "New Event",
+  "scheduleHearing": "Schedule Hearing",
+  "views": {
+    "month": "Month",
+    "week": "Week",
+    "day": "Day",
+    "agenda": "Agenda / List"
+  },
+  "filters": {
+    "all": "All Events",
+    "hearings": "Hearings Only",
+    "deadlines": "Procedural Deadlines",
+    "appointments": "Appointments & Meetings",
+    "matter": "Matter",
+    "lawyer": "Lawyer / Associate"
+  },
+  "fields": {
+    "title": "Subject / Event Title",
+    "type": "Event Type",
+    "startsAt": "Start Date & Time",
+    "endsAt": "End Date & Time",
+    "allDay": "All Day",
+    "location": "Location / Court (e.g. Douala High Court, Courtroom 2)",
+    "description": "Description / Agenda",
+    "source": "Legal or judicial source (mandatory for procedural deadline)",
+    "matter": "Linked Matter",
+    "procedure": "Judicial Procedure",
+    "attendees": "Attendees / Assigned Lawyers",
+    "reminders": "Automated Reminders"
+  },
+  "postponeModal": {
+    "title": "Postpone Hearing or Event",
+    "description": "In accordance with practice standards, the previous hearing will be marked as postponed and preserved in the history without overwrite. A linked replacement event will be created.",
+    "newDate": "New Hearing Date",
+    "reason": "Postponement justification (e.g. Opposing party failure to appear, exchange of pleadings)",
+    "newLocation": "New Location / Courtroom (optional)",
+    "submit": "Confirm Postponement",
+    "cancel": "Cancel"
+  },
+  "emptyState": {
+    "title": "No events scheduled for this period",
+    "description": "Use the button above to schedule a hearing, appointment, or register a procedural deadline."
+  }
 }
-

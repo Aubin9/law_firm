@@ -1,0 +1,74 @@
+# Caddyfile - Configuration Reverse Proxy Souverain LAN / VPN
+# Conforme à ARCHITECTURE.md Section 15 & Loi camerounaise n° 2024/017
+
+{
+    # Global options
+    admin off
+    auto_https off
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}
+
+# Production entrypoint: LAN or VPN interface
+:443, :80 {
+    # 1. Network Filter: Refuse access from outside LAN or VPN
+    # Allowed subnets: Localhost, RFC 1918 Private Ranges (Office LAN), WireGuard Subnets (10.8.0.0/24)
+    @authorized_network {
+        remote_ip 127.0.0.1/32 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 10.8.0.0/24
+    }
+
+    # 2. Refuse any connection outside authorized perimeter
+    handle {
+        @blocked not remote_ip 127.0.0.1/32 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 10.8.0.0/24
+        respond @blocked "Accès strictement refusé. Connexion au réseau LAN du cabinet ou au tunnel WireGuard requise (Loi n° 2024/017)." 403 {
+            close
+        }
+    }
+
+    # 3. Route authorized requests to Next.js application
+    handle @authorized_network {
+        # Compression
+        encode zstd gzip
+
+        # Security Headers
+        header {
+            # HSTS (2 years)
+            Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+            # Prevent framing / Clickjacking
+            X-Frame-Options "DENY"
+            # Prevent MIME type sniffing
+            X-Content-Type-Options "nosniff"
+            # Strict referrer policy
+            Referrer-Policy "strict-origin-when-cross-origin"
+            # Restrict browser APIs
+            Permissions-Policy "camera=(), microphone=(), geolocation=(), browsing-topics=()"
+            # Remove identifying server banner
+            -Server
+        }
+
+        # Static asset caching
+        @static {
+            path /_next/static/* /favicon.ico /robots.txt
+        }
+        header @static Cache-Control "public, max-age=31536000, immutable"
+
+        # Reverse proxy to Next.js App
+        reverse_proxy app:3000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+
+            # Health check & timeouts
+            transport http {
+                response_header_timeout 60s
+                read_timeout 60s
+                write_timeout 60s
+            }
+        }
+    }
+}
+

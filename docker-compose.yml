@@ -1,0 +1,181 @@
+# Production Docker Compose - Sovereign Law Practice Platform
+# Conforme à ARCHITECTURE.md Sections 9, 15, 16 & Loi camerounaise n° 2024/017
+# Architecture réseau étanche : seul Caddy publie les ports 80/443 sur le LAN/VPN.
+# Le réseau backend est strictement interne (internal: true) sans accès Internet direct.
+
+version: "3.9"
+
+services:
+  # --- 1. Reverse Proxy & Point d'entrée souverain ---
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: firm-caddy
+    restart: unless-stopped
+    ports:
+      - "${HOST_BIND_IP:-0.0.0.0}:80:80"
+      - "${HOST_BIND_IP:-0.0.0.0}:443:443"
+    volumes:
+      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - firm-frontend
+      - firm-backend
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- 2. Application Principale (Next.js App Router) ---
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: firm-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - PORT=3000
+      - DATABASE_URL=postgresql://lawfirm:${POSTGRES_PASSWORD:-change-me-in-production}@postgres:5432/lawfirm_db?schema=public
+      - STORAGE_LOCAL_PATH=/app/storage/documents
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-super-secure-production-secret-min-32-chars}
+      - BETTER_AUTH_URL=https://${LAN_DOMAIN:-cabinet.lan}
+      - DRIVE_SYNC_ENABLED=false
+      - AI_ASSISTANT_ENABLED=false
+    volumes:
+      - storage_documents:/app/storage/documents
+      - app_tmp:/app/tmp
+    networks:
+      - firm-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # --- 3. Démon de Tâches de Fond (Worker) ---
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: firm-worker
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      - DATABASE_URL=postgresql://lawfirm:${POSTGRES_PASSWORD:-change-me-in-production}@postgres:5432/lawfirm_db?schema=public
+      - STORAGE_LOCAL_PATH=/app/storage/documents
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+      - DRIVE_SYNC_ENABLED=false
+      - AI_ASSISTANT_ENABLED=false
+    volumes:
+      - storage_documents:/app/storage/documents
+      - app_tmp:/app/tmp
+    networks:
+      - firm-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- 4. Base de Données Souveraine (PostgreSQL 16) ---
+  postgres:
+    image: postgres:16-alpine
+    container_name: firm-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=lawfirm
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change-me-in-production}
+      - POSTGRES_DB=lawfirm_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - firm-backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lawfirm -d lawfirm_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- 5. Antivirus Dédié (ClamAV) ---
+  clamav:
+    image: clamav/clamav:latest
+    container_name: firm-clamav
+    restart: unless-stopped
+    volumes:
+      - clamav_data:/var/lib/clamav
+    networks:
+      - firm-backend
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan /bin/sh || exit 0"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+  # --- 6. Sauvegarde Automatisée & Rétention GFS ---
+  backup:
+    image: postgres:16-alpine
+    container_name: firm-backup
+    restart: unless-stopped
+    environment:
+      - PGPASSWORD=${POSTGRES_PASSWORD:-change-me-in-production}
+      - PGUSER=lawfirm
+      - PGHOST=postgres
+      - PGDATABASE=lawfirm_db
+      - BACKUP_DIR=/var/backups/lawfirm
+    volumes:
+      - ./ops:/ops:ro
+      - backups_data:/var/backups/lawfirm
+      - storage_documents:/storage/documents:ro
+    networks:
+      - firm-backend
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache bash restic
+        mkdir -p /var/backups/lawfirm /var/log
+        echo "0 2 * * * /ops/backup.sh >> /var/log/backup.log 2>&1" > /etc/crontabs/root
+        crond -f -l 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  firm-frontend:
+    name: firm_frontend_network
+    driver: bridge
+  firm-backend:
+    name: firm_backend_network
+    driver: bridge
+    internal: true # Réseau isolé sans passerelle vers Internet public
+
+volumes:
+  postgres_data:
+    name: firm_postgres_data
+  clamav_data:
+    name: firm_clamav_data
+  caddy_data:
+    name: firm_caddy_data
+  caddy_config:
+    name: firm_caddy_config
+  storage_documents:
+    name: firm_storage_documents
+  backups_data:
+    name: firm_backups_data
+  app_tmp:
+    name: firm_app_tmp
+

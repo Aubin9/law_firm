@@ -27,6 +27,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // -----------------------------------------------------------------------------
@@ -446,11 +447,14 @@ model Verification {
 }
 
 model TwoFactor {
-  id          String @id
-  secret      String
-  backupCodes String
-  userId      String
-  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                     String    @id
+  secret                 String
+  backupCodes            String
+  userId                 String
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verified               Boolean   @default(false)
+  failedVerificationCount Int?      @default(0)
+  lockedUntil            DateTime?
 
   @@index([userId])
 }
@@ -493,10 +497,10 @@ model AdminAccessGrant {
   matterId     String
   matter       Matter    @relation(fields: [matterId], references: [id])
   reason       String
-  approvedById String
-  approvedBy   User      @relation("GrantApprover", fields: [approvedById], references: [id])
-  startsAt     DateTime
-  expiresAt    DateTime
+  approvedById String?
+  approvedBy   User?     @relation("GrantApprover", fields: [approvedById], references: [id])
+  startsAt     DateTime?
+  expiresAt    DateTime?
   revokedAt    DateTime?
   createdAt    DateTime  @default(now())
 

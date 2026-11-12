@@ -28,12 +28,22 @@ import {
   X,
   User as UserIcon,
   KeyRound,
+  Activity,
+  Clock,
   LogOut,
   Sparkles,
   Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  fetchUserNotificationsAction,
+  markNotificationReadAction,
+  markAllNotificationsReadAction,
+} from "@/server/actions/notification-actions";
+import { getActiveGrantsForUserAction } from "@/server/actions/access-grant-actions";
+import { globalSearchAction } from "@/server/actions/search-actions";
+import type { GlobalSearchResult } from "@/server/services/search-service";
 
 export interface NavItem {
   key: string;
@@ -109,6 +119,13 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         icon: Briefcase,
       },
       {
+        key: "conflicts",
+        labelFr: "Conflits d'intérêts",
+        labelEn: "Conflict checks",
+        href: "/conflicts",
+        icon: Scale,
+      },
+      {
         key: "documents",
         labelFr: "Documents",
         labelEn: "Documents",
@@ -165,10 +182,10 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         icon: GitBranch,
       },
       {
-        key: "reference",
-        labelFr: "Données de référence",
-        labelEn: "Reference data",
-        href: "/admin/reference",
+        key: "roles",
+        labelFr: "Rôles & Permissions",
+        labelEn: "Roles & permissions",
+        href: "/admin/roles",
         icon: Database,
       },
       {
@@ -179,18 +196,18 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         icon: ShieldCheck,
       },
       {
-        key: "backups",
-        labelFr: "Sauvegardes",
-        labelEn: "Backups",
-        href: "/admin/backups",
-        icon: HardDrive,
+        key: "accessGrants",
+        labelFr: "Accès exceptionnels",
+        labelEn: "Access grants",
+        href: "/admin/access-grants",
+        icon: KeyRound,
       },
       {
-        key: "integrations",
-        labelFr: "Intégrations",
-        labelEn: "Integrations",
-        href: "/admin/integrations",
-        icon: Blocks,
+        key: "system",
+        labelFr: "Supervision système",
+        labelEn: "System supervision",
+        href: "/admin/system",
+        icon: Activity,
       },
     ],
   },
@@ -226,7 +243,79 @@ export function AppShell({
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [unreadCount, setUnreadCount] = React.useState(3);
+  const [searchResults, setSearchResults] = React.useState<GlobalSearchResult>({
+    matters: [],
+    parties: [],
+    documents: [],
+    tasks: [],
+  });
+  const [isSearching, setIsSearching] = React.useState(false);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+  const [realNotifications, setRealNotifications] = React.useState<any[]>([]);
+  const [activeGrants, setActiveGrants] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    getActiveGrantsForUserAction()
+      .then((grants) => {
+        if (grants && grants.length > 0) {
+          setActiveGrants(grants);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) {
+      setSearchResults({ matters: [], parties: [], documents: [], tasks: [] });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await globalSearchAction(searchQuery);
+        if (res.success && res.data) {
+          setSearchResults(res.data);
+        }
+      } finally {
+        setIsSearching(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const loadNotifications = React.useCallback(async () => {
+    try {
+      const res = await fetchUserNotificationsAction();
+      if (res.success) {
+        setRealNotifications(res.notifications || []);
+        setUnreadCount(res.unreadCount || 0);
+      }
+    } catch {
+      // Graceful fallback
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadNotifications();
+  }, [loadNotifications]);
+
+  const handleMarkAllRead = async () => {
+    await markAllNotificationsReadAction();
+    setUnreadCount(0);
+    setRealNotifications((prev) =>
+      prev.map((n) => ({ ...n, readAt: new Date().toISOString() }))
+    );
+  };
+
+  const handleMarkOneRead = async (id: string) => {
+    await markNotificationReadAction(id);
+    setRealNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n))
+    );
+    setUnreadCount((c) => Math.max(0, c - 1));
+  };
 
   const quickCreateRef = React.useRef<HTMLDivElement>(null);
   const notificationsRef = React.useRef<HTMLDivElement>(null);
@@ -664,6 +753,18 @@ export function AppShell({
 
           {/* Right: Quick Create, Notifications, Locale Switch, User Menu */}
           <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Active Grant Countdown Pill */}
+            {activeGrants.length > 0 && (
+              <a
+                href="/admin/access-grants"
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-mono font-medium rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition"
+                title={`Accès exceptionnel actif sur ${activeGrants[0].matterReference}`}
+              >
+                <Clock className="h-3.5 w-3.5 animate-pulse text-amber-600" />
+                <span>Accès {activeGrants[0].matterReference}</span>
+              </a>
+            )}
+
             {/* Quick Create (+) */}
             <div ref={quickCreateRef} className="relative hidden sm:block">
               <Button
@@ -744,7 +845,7 @@ export function AppShell({
                     {unreadCount > 0 && (
                       <button
                         type="button"
-                        onClick={() => setUnreadCount(0)}
+                        onClick={handleMarkAllRead}
                         className="inline-flex items-center gap-1 text-caption font-medium text-primary hover:underline"
                       >
                         <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -757,25 +858,40 @@ export function AppShell({
                     )}
                   </div>
                   <div className="max-h-80 overflow-y-auto divide-y divide-border">
-                    {sampleNotifications.map((item) => (
-                      <div
-                        key={item.id}
-                        className="px-4 py-3 hover:bg-surface-muted/60 transition-colors"
-                      >
-                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                          <span className="font-semibold uppercase tracking-wider text-accent">
-                            {item.group}
-                          </span>
-                          <span>{item.time}</span>
-                        </div>
-                        <p className="mt-1 text-body-sm font-medium text-foreground">
-                          {item.title}
-                        </p>
-                        <p className="mt-0.5 font-mono text-caption text-muted-foreground">
-                          {item.meta}
-                        </p>
+                    {realNotifications.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-xs text-muted-foreground">
+                        {locale === "en" ? "No new notifications" : "Aucune notification"}
                       </div>
-                    ))}
+                    ) : (
+                      realNotifications.map((item) => {
+                        const isUnread = !item.readAt;
+                        const payload = item.payload || {};
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => handleMarkOneRead(item.id)}
+                            className={`px-4 py-3 hover:bg-surface-muted/60 transition-colors cursor-pointer ${
+                              isUnread ? "bg-amber-500/5 font-semibold" : ""
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                              <span className="font-semibold uppercase tracking-wider text-accent">
+                                {item.type}
+                              </span>
+                              <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-foreground">
+                              {payload.title || "Notification"}
+                            </p>
+                            {payload.matterReference && (
+                              <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                                {payload.matterReference}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               )}
@@ -857,7 +973,7 @@ export function AppShell({
                   </div>
                   <div className="py-1">
                     <a
-                      href={buildHref("/profile")}
+                      href={buildHref("/settings/security")}
                       role="menuitem"
                       className="flex items-center gap-2.5 rounded-md px-3 py-2 text-body-sm text-foreground hover:bg-surface-muted"
                     >
@@ -866,11 +982,11 @@ export function AppShell({
                         aria-hidden="true"
                       />
                       <span>
-                        {locale === "en" ? "My Profile" : "Mon profil"}
+                        {locale === "en" ? "My Account" : "Mon compte"}
                       </span>
                     </a>
                     <a
-                      href={buildHref("/profile/security")}
+                      href={buildHref("/settings/security")}
                       role="menuitem"
                       className="flex items-center gap-2.5 rounded-md px-3 py-2 text-body-sm text-foreground hover:bg-surface-muted"
                     >
@@ -1020,74 +1136,169 @@ export function AppShell({
               </button>
             </div>
 
-            <div className="max-h-80 overflow-y-auto p-3 space-y-4">
-              <div>
-                <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {locale === "en"
-                    ? "Authorized Matters"
-                    : "Dossiers accessibles"}
-                </p>
-                <div className="space-y-1">
-                  <a
-                    href={buildHref("/matters")}
-                    onClick={() => setSearchModalOpen(false)}
-                    className="flex items-center justify-between rounded-lg px-2.5 py-2 text-body-sm hover:bg-surface-muted"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="rounded bg-surface-muted px-1.5 py-0.5 font-mono text-caption font-semibold text-primary border border-border">
-                        DOS-2026-0014
-                      </span>
-                      <span className="truncate font-medium text-foreground">
-                        Contentieux commercial SABC c/ Afriland
-                      </span>
-                    </div>
-                    <span className="text-caption text-muted-foreground">
-                      TGI Douala
-                    </span>
-                  </a>
-                  <a
-                    href={buildHref("/matters")}
-                    onClick={() => setSearchModalOpen(false)}
-                    className="flex items-center justify-between rounded-lg px-2.5 py-2 text-body-sm hover:bg-surface-muted"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="rounded bg-surface-muted px-1.5 py-0.5 font-mono text-caption font-semibold text-primary border border-border">
-                        DOS-2026-0008
-                      </span>
-                      <span className="truncate font-medium text-foreground">
-                        Restructuration OHADA - Groupe Fokou SA
-                      </span>
-                    </div>
-                    <span className="text-caption text-muted-foreground">
-                      Conseil
-                    </span>
-                  </a>
+            <div className="max-h-96 overflow-y-auto p-3 space-y-4">
+              {isSearching ? (
+                <div className="py-8 text-center text-xs text-muted-foreground">
+                  <span className="inline-block animate-spin mr-2">⏳</span>
+                  {locale === "en" ? "Searching across firm records..." : "Recherche dans les dossiers du cabinet..."}
                 </div>
-              </div>
+              ) : searchQuery.trim().length >= 2 ? (
+                searchResults.matters.length === 0 &&
+                searchResults.parties.length === 0 &&
+                searchResults.documents.length === 0 &&
+                searchResults.tasks.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-muted-foreground">
+                    {locale === "en"
+                      ? `No results found for "${searchQuery}"`
+                      : `Aucun résultat trouvé pour "${searchQuery}"`}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Matters */}
+                    {searchResults.matters.length > 0 && (
+                      <div>
+                        <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {locale === "en" ? "Matters" : "Dossiers"}
+                        </p>
+                        <div className="space-y-1">
+                          {searchResults.matters.map((m) => (
+                            <a
+                              key={m.id}
+                              href={buildHref(`/matters/${m.id}`)}
+                              onClick={() => setSearchModalOpen(false)}
+                              className="flex items-center justify-between rounded-lg px-2.5 py-2 text-body-sm hover:bg-surface-muted transition-colors"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="rounded bg-surface-muted px-1.5 py-0.5 font-mono text-caption font-semibold text-primary border border-border">
+                                  {m.reference}
+                                </span>
+                                <span className="truncate font-medium text-foreground">
+                                  {m.title}
+                                </span>
+                              </div>
+                              {m.category && (
+                                <span className="text-caption text-muted-foreground shrink-0 ml-2">
+                                  {m.category}
+                                </span>
+                              )}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
-              <div>
-                <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {locale === "en" ? "Quick Actions" : "Actions rapides"}
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                  {quickCreateActions.map((act) => (
-                    <a
-                      key={act.key}
-                      href={act.href}
-                      onClick={() => setSearchModalOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-body-sm text-foreground hover:bg-surface-muted"
-                    >
-                      <Plus
-                        className="h-4 w-4 text-accent shrink-0"
-                        aria-hidden="true"
-                      />
-                      <span className="truncate">
-                        {locale === "en" ? act.labelEn : act.labelFr}
-                      </span>
-                    </a>
-                  ))}
+                    {/* Parties */}
+                    {searchResults.parties.length > 0 && (
+                      <div>
+                        <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {locale === "en" ? "Clients & Parties" : "Clients & Parties"}
+                        </p>
+                        <div className="space-y-1">
+                          {searchResults.parties.map((p) => (
+                            <a
+                              key={p.id}
+                              href={buildHref(`/parties/${p.id}`)}
+                              onClick={() => setSearchModalOpen(false)}
+                              className="flex items-center justify-between rounded-lg px-2.5 py-2 text-body-sm hover:bg-surface-muted transition-colors"
+                            >
+                              <span className="truncate font-medium text-foreground">
+                                {p.displayName}
+                              </span>
+                              <span className="text-caption text-muted-foreground shrink-0 ml-2">
+                                {p.clientStatus} ({p.type})
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Documents */}
+                    {searchResults.documents.length > 0 && (
+                      <div>
+                        <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {locale === "en" ? "Documents" : "Documents"}
+                        </p>
+                        <div className="space-y-1">
+                          {searchResults.documents.map((d) => (
+                            <a
+                              key={d.id}
+                              href={buildHref(d.matterId ? `/matters/${d.matterId}?tab=documents` : `/matters`)}
+                              onClick={() => setSearchModalOpen(false)}
+                              className="flex items-center justify-between rounded-lg px-2.5 py-2 text-body-sm hover:bg-surface-muted transition-colors"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <span className="truncate font-medium text-foreground">
+                                  {d.title}
+                                </span>
+                              </div>
+                              {d.matterReference && (
+                                <span className="font-mono text-caption text-primary shrink-0 ml-2">
+                                  {d.matterReference}
+                                </span>
+                              )}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tasks */}
+                    {searchResults.tasks.length > 0 && (
+                      <div>
+                        <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {locale === "en" ? "Tasks" : "Tâches"}
+                        </p>
+                        <div className="space-y-1">
+                          {searchResults.tasks.map((t) => (
+                            <a
+                              key={t.id}
+                              href={buildHref(t.matterId ? `/matters/${t.matterId}?tab=tasks` : `/matters`)}
+                              onClick={() => setSearchModalOpen(false)}
+                              className="flex items-center justify-between rounded-lg px-2.5 py-2 text-body-sm hover:bg-surface-muted transition-colors"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <CheckSquare className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <span className="truncate font-medium text-foreground">
+                                  {t.title}
+                                </span>
+                              </div>
+                              <span className="text-caption text-muted-foreground shrink-0 ml-2">
+                                {t.status}
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              ) : (
+                <div>
+                  <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {locale === "en" ? "Quick Actions" : "Actions rapides"}
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                    {quickCreateActions.map((act) => (
+                      <a
+                        key={act.key}
+                        href={act.href}
+                        onClick={() => setSearchModalOpen(false)}
+                        className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-body-sm text-foreground hover:bg-surface-muted"
+                      >
+                        <Plus
+                          className="h-4 w-4 text-accent shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">
+                          {locale === "en" ? act.labelEn : act.labelFr}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
