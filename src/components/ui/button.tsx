@@ -15,8 +15,7 @@ const buttonVariants = cva(
           "border border-border bg-surface text-foreground shadow-card hover:bg-surface-muted active:bg-surface-muted/80",
         outline:
           "border border-border bg-surface text-foreground shadow-card hover:bg-surface-muted active:bg-surface-muted/80",
-        ghost:
-          "text-foreground hover:bg-surface-muted hover:text-foreground",
+        ghost: "text-foreground hover:bg-surface-muted hover:text-foreground",
         destructive:
           "bg-danger text-primary-foreground shadow-card hover:bg-danger/90 active:bg-danger/95",
         outlineDanger:
@@ -34,11 +33,12 @@ const buttonVariants = cva(
       variant: "primary",
       size: "default",
     },
-  }
+  },
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends
+    React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   loading?: boolean;
@@ -56,7 +56,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       children,
       ...props
     },
-    ref
+    ref,
   ) => {
     const Comp = asChild ? Slot : "button";
     return (
@@ -69,7 +69,10 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       >
         {loading ? (
           <>
-            <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden="true" />
+            <Loader2
+              className="h-4 w-4 animate-spin shrink-0 bg-primary hover:bg-primary/95 text-white text-xs font-semibold"
+              aria-hidden="true"
+            />
             <span>{children}</span>
           </>
         ) : (
@@ -77,9 +80,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         )}
       </Comp>
     );
-  }
+  },
 );
 Button.displayName = "Button";
 
 export { Button, buttonVariants };
-

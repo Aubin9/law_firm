@@ -28,6 +28,20 @@ interface HearingItem {
   matterTitle: string | null;
 }
 
+interface LawyerWorkloadItem {
+  userId: string;
+  name: string;
+  email: string;
+  roleKey: string;
+  activeLeadMatters: number;
+  activeMemberMatters: number;
+  pendingTasks: number;
+  overdueTasks: number;
+  upcomingHearings: number;
+  capacityLevel: "LOW" | "NORMAL" | "HIGH" | "OVERLOADED";
+  score: number;
+}
+
 interface ReportsClientProps {
   totalMatters: number;
   categoryDistribution: Array<{ name: string; count: number }>;
@@ -38,6 +52,7 @@ interface ReportsClientProps {
   doneTasks: number;
   overdueTasks: number;
   upcomingHearings: HearingItem[];
+  lawyerWorkloads?: LawyerWorkloadItem[];
   locale: "fr" | "en";
   currentUserRole: string;
 }
@@ -52,6 +67,7 @@ export function ReportsClient({
   doneTasks,
   overdueTasks,
   upcomingHearings,
+  lawyerWorkloads = [],
   locale,
   currentUserRole,
 }: ReportsClientProps) {
@@ -249,6 +265,108 @@ export function ReportsClient({
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Team Workload & Operational Capacity Section (LEG-10 / MOD-16) */}
+      <div className="rounded-xl border border-border bg-card p-6 shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b pb-3">
+          <div>
+            <h3 className="font-bold font-serif text-base text-foreground flex items-center gap-2">
+              <Users className="h-4 w-4 text-gold" />
+              {locale === "fr" ? "Charge de Travail & Capacité Opérationnelle de l'Équipe" : "Team Workload & Capacity"}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {locale === "fr"
+                ? "Suivi du volume de dossiers actifs, tâches en souffrance et audiences par avocat (LEG-10)."
+                : "Active matters, pending deadlines and capacity index per lawyer."}
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-muted/50 border-b border-border text-xs uppercase font-semibold text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3">{locale === "fr" ? "Avocat / Juriste" : "Lawyer"}</th>
+                <th className="px-4 py-3">{locale === "fr" ? "Rôle" : "Role"}</th>
+                <th className="px-4 py-3 text-center">{locale === "fr" ? "Dossiers Lead" : "Lead Matters"}</th>
+                <th className="px-4 py-3 text-center">{locale === "fr" ? "Dossiers Membre" : "Member"}</th>
+                <th className="px-4 py-3 text-center">{locale === "fr" ? "Tâches en cours" : "Pending Tasks"}</th>
+                <th className="px-4 py-3 text-center">{locale === "fr" ? "En retard" : "Overdue"}</th>
+                <th className="px-4 py-3 text-center">{locale === "fr" ? "Audiences (14j)" : "Hearings"}</th>
+                <th className="px-4 py-3 text-right">{locale === "fr" ? "Capacité" : "Capacity"}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {lawyerWorkloads.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground text-xs">
+                    {locale === "fr" ? "Aucune donnée de charge disponible." : "No workload data available."}
+                  </td>
+                </tr>
+              ) : (
+                lawyerWorkloads.map((w) => {
+                  const capacityBadge = {
+                    LOW: {
+                      label: locale === "fr" ? "Disponible" : "Available",
+                      className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30",
+                    },
+                    NORMAL: {
+                      label: locale === "fr" ? "Optimale" : "Optimal",
+                      className: "bg-blue-500/10 text-blue-700 border-blue-500/30",
+                    },
+                    HIGH: {
+                      label: locale === "fr" ? "Élevée" : "High",
+                      className: "bg-amber-500/10 text-amber-700 border-amber-500/30",
+                    },
+                    OVERLOADED: {
+                      label: locale === "fr" ? "Surchargé" : "Overloaded",
+                      className: "bg-rose-500/10 text-rose-700 border-rose-500/30 font-bold",
+                    },
+                  }[w.capacityLevel];
+
+                  return (
+                    <tr key={w.userId} className="hover:bg-muted/30 transition text-xs">
+                      <td className="px-4 py-3 font-semibold text-foreground">
+                        <div>{w.name}</div>
+                        <div className="text-[11px] text-muted-foreground font-mono">{w.email}</div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        <Badge variant="outline" className="text-[10px]">
+                          {w.roleKey}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono font-bold text-foreground">
+                        {w.activeLeadMatters}
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono text-muted-foreground">
+                        {w.activeMemberMatters}
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono text-foreground">
+                        {w.pendingTasks}
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono">
+                        {w.overdueTasks > 0 ? (
+                          <span className="text-destructive font-bold">{w.overdueTasks}</span>
+                        ) : (
+                          <span className="text-muted-foreground">0</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center font-mono text-foreground">
+                        {w.upcomingHearings}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Badge variant="outline" className={`text-[10px] ${capacityBadge.className}`}>
+                          {capacityBadge.label}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

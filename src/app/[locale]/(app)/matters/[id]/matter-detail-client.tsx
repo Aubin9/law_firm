@@ -45,7 +45,27 @@ import {
   RotateCcw,
   Flag,
   Activity,
+  Mail,
+  Phone,
+  Archive,
+  FileCheck,
+  Unlock,
+  Ban,
+  Send,
 } from "lucide-react";
+import {
+  createCommunicationAction,
+} from "@/server/actions/communication-actions";
+import {
+  getMatterClosureReadinessAction,
+  requestMatterClosureAction,
+  approveMatterClosureAction,
+  reopenMatterAction,
+} from "@/server/actions/matter-closure-actions";
+import {
+  placeDestructionHoldAction,
+  releaseDestructionHoldAction,
+} from "@/server/actions/retention-actions";
 import { getMatterTimelineAction } from "@/server/actions/productivity-actions";
 import {
   createEventAction,
@@ -68,6 +88,11 @@ import {
   uploadDocumentAction,
   validateDocumentVersionAction,
 } from "@/server/actions/document-actions";
+import {
+  listDocumentTemplatesAction,
+  getTemplatePreviewAction,
+  generateDocumentFromTemplateAction,
+} from "@/server/actions/document-generation-actions";
 import {
   createTaskAction,
   updateTaskStatusAction,
@@ -113,11 +138,51 @@ export function MatterDetailClient({
 
   // Tab state
   const [activeTab, setActiveTab] = useState<
-    "overview" | "missions" | "documents" | "tasks" | "calendar" | "access" | "timeline" | "audit"
+    "overview" | "missions" | "documents" | "tasks" | "calendar" | "communications" | "closure" | "access" | "timeline" | "audit"
   >("overview");
   const [matterLogs, setMatterLogs] = useState<any[]>([]);
   const [isLogsLoaded, setIsLogsLoaded] = useState(false);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  // Communications state (LEG-09 / MOD-12)
+  const [isAddCommOpen, setIsAddCommOpen] = useState(false);
+  const [commChannel, setCommChannel] = useState<string>("EMAIL");
+  const [commDirection, setCommDirection] = useState<string>("OUTBOUND");
+  const [commSubject, setCommSubject] = useState("");
+  const [commBody, setCommBody] = useState("");
+  const [commDocumentId, setCommDocumentId] = useState("");
+  const [commOccurredAt, setCommOccurredAt] = useState("");
+  const [commError, setCommError] = useState<string | null>(null);
+
+  // Closure state (BR-14)
+  const [closureReadiness, setClosureReadiness] = useState<any | null>(null);
+  const [isLoadingReadiness, setIsLoadingReadiness] = useState(false);
+  const [closureReasonInput, setClosureReasonInput] = useState("");
+  const [closureArchiveImmediately, setClosureArchiveImmediately] = useState(false);
+  const [reopenJustificationInput, setReopenJustificationInput] = useState("");
+  const [closureActionError, setClosureActionError] = useState<string | null>(null);
+
+  // Legal Hold state (BR-15)
+  const [isAddHoldOpen, setIsAddHoldOpen] = useState(false);
+  const [holdReasonInput, setHoldReasonInput] = useState("");
+  const [holdActionError, setHoldActionError] = useState<string | null>(null);
+
+  const loadClosureReadiness = async () => {
+    setIsLoadingReadiness(true);
+    setClosureActionError(null);
+    try {
+      const res = await getMatterClosureReadinessAction(matter.id);
+      if (res.success && res.report) {
+        setClosureReadiness(res.report);
+      } else {
+        setClosureActionError(res.error || "Erreur de chargement de conformité");
+      }
+    } catch (err: any) {
+      setClosureActionError(err.message || "Erreur réseau");
+    } finally {
+      setIsLoadingReadiness(false);
+    }
+  };
 
   const [timelineEntries, setTimelineEntries] = useState<any[]>([]);
   const [isTimelineLoaded, setIsTimelineLoaded] = useState(false);
@@ -185,6 +250,19 @@ export function MatterDetailClient({
   const [docComment, setDocComment] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
+
+  // Document generation drawer state (INT-05)
+  const [isGenerateDocOpen, setIsGenerateDocOpen] = useState(false);
+  const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [templateCustomVars, setTemplateCustomVars] = useState<Record<string, any>>({});
+  const [renderedPreview, setRenderedPreview] = useState<string>("");
+  const [missingPreviewVars, setMissingPreviewVars] = useState<string[]>([]);
+  const [genDocTitle, setGenDocTitle] = useState<string>("");
+  const [genDocCategoryId, setGenDocCategoryId] = useState<string>(docCategories[0]?.id || "");
+  const [genDocComment, setGenDocComment] = useState<string>("");
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [genDocError, setGenDocError] = useState<string | null>(null);
 
   // Task & Note state
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -347,6 +425,95 @@ export function MatterDetailClient({
         setDocComment("");
         setDocFile(null);
         router.refresh();
+      }
+    });
+  };
+
+  const handleOpenGenerateDocDrawer = async () => {
+    setIsGenerateDocOpen(true);
+    setGenDocError(null);
+    try {
+      const res = await listDocumentTemplatesAction();
+      if (res.success && res.templates) {
+        setAvailableTemplates(res.templates);
+        if (res.templates.length > 0) {
+          await handleSelectTemplate(res.templates[0].id, res.templates);
+        }
+      } else {
+        setGenDocError(res.error || "Impossible de charger les modèles.");
+      }
+    } catch (err: any) {
+      setGenDocError(err.message || "Erreur de chargement des modèles.");
+    }
+  };
+
+  const handleSelectTemplate = async (templateId: string, templatesList = availableTemplates) => {
+    setSelectedTemplateId(templateId);
+    const tpl = templatesList.find((t) => t.id === templateId);
+    if (!tpl) return;
+
+    const initialVars: Record<string, any> = {};
+    if (Array.isArray(tpl.variables)) {
+      for (const v of tpl.variables) {
+        if (v.defaultValue) initialVars[v.key] = v.defaultValue;
+      }
+    }
+    setTemplateCustomVars(initialVars);
+    setGenDocTitle(`${tpl.nameFr} — ${matter.reference}`);
+
+    await loadPreview(templateId, initialVars);
+  };
+
+  const loadPreview = async (templateId: string, customVars: Record<string, any>) => {
+    setIsLoadingPreview(true);
+    setGenDocError(null);
+    try {
+      const res = await getTemplatePreviewAction(templateId, matter.id, customVars);
+      if (res.success && res.preview) {
+        setRenderedPreview(res.preview.rendered);
+        setMissingPreviewVars(res.preview.missingVariables);
+      } else {
+        setGenDocError(res.error || "Erreur de prévisualisation.");
+      }
+    } catch (err: any) {
+      setGenDocError(err.message || "Erreur de prévisualisation.");
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  const handleCustomVarChange = (key: string, value: string) => {
+    const updated = { ...templateCustomVars, [key]: value };
+    setTemplateCustomVars(updated);
+    if (selectedTemplateId) {
+      loadPreview(selectedTemplateId, updated);
+    }
+  };
+
+  const handleExecuteGenerateDoc = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTemplateId) return;
+    setGenDocError(null);
+
+    startTransition(async () => {
+      try {
+        const res = await generateDocumentFromTemplateAction({
+          templateId: selectedTemplateId,
+          matterId: matter.id,
+          customVariables: templateCustomVars,
+          title: genDocTitle,
+          categoryId: genDocCategoryId || null,
+          comment: genDocComment,
+        });
+
+        if (res.success) {
+          setIsGenerateDocOpen(false);
+          router.refresh();
+        } else {
+          setGenDocError(res.error || "Échec de génération du document.");
+        }
+      } catch (err: any) {
+        setGenDocError(err.message || "Erreur inconnue");
       }
     });
   };
@@ -515,6 +682,119 @@ export function MatterDetailClient({
     setExpandedProcedures((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const handleCreateCommunication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commSubject.trim() && !commBody.trim()) {
+      setCommError("L'objet ou le contenu de la communication est obligatoire.");
+      return;
+    }
+    setCommError(null);
+    startTransition(async () => {
+      const res = await createCommunicationAction({
+        matterId: matter.id,
+        channel: commChannel as any,
+        direction: commDirection as any,
+        subject: commSubject.trim() || null,
+        body: commBody.trim() || null,
+        documentId: commDocumentId || null,
+        occurredAt: commOccurredAt || null,
+      });
+
+      if (!res.success) {
+        setCommError(res.error || "Erreur lors de l'enregistrement de la communication");
+      } else {
+        setIsAddCommOpen(false);
+        setCommSubject("");
+        setCommBody("");
+        setCommDocumentId("");
+        setCommOccurredAt("");
+        router.refresh();
+      }
+    });
+  };
+
+  const handleRequestClosure = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!closureReasonInput.trim()) {
+      setClosureActionError("Le motif de clôture est obligatoire.");
+      return;
+    }
+    setClosureActionError(null);
+    startTransition(async () => {
+      const res = await requestMatterClosureAction(matter.id, closureReasonInput.trim());
+      if (!res.success) {
+        setClosureActionError(res.error || "Erreur lors de la demande de clôture");
+      } else {
+        setClosureReasonInput("");
+        router.refresh();
+      }
+    });
+  };
+
+  const handleApproveClosure = async () => {
+    setClosureActionError(null);
+    startTransition(async () => {
+      const res = await approveMatterClosureAction(matter.id, closureArchiveImmediately);
+      if (!res.success) {
+        setClosureActionError(res.error || "Erreur lors de l'approbation de clôture");
+      } else {
+        router.refresh();
+      }
+    });
+  };
+
+  const handleReopenMatter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reopenJustificationInput.trim()) {
+      setClosureActionError("Une justification écrite est obligatoire pour réouvrir un dossier.");
+      return;
+    }
+    setClosureActionError(null);
+    startTransition(async () => {
+      const res = await reopenMatterAction(matter.id, reopenJustificationInput.trim());
+      if (!res.success) {
+        setClosureActionError(res.error || "Erreur lors de la réouverture");
+      } else {
+        setReopenJustificationInput("");
+        router.refresh();
+      }
+    });
+  };
+
+  const handlePlaceHold = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!holdReasonInput.trim()) {
+      setHoldActionError("Le motif légal du gel conservatoire est obligatoire.");
+      return;
+    }
+    setHoldActionError(null);
+    startTransition(async () => {
+      const res = await placeDestructionHoldAction({
+        matterId: matter.id,
+        reason: holdReasonInput.trim(),
+      });
+      if (!res.success) {
+        setHoldActionError(res.error || "Erreur lors de la pose du gel");
+      } else {
+        setIsAddHoldOpen(false);
+        setHoldReasonInput("");
+        router.refresh();
+      }
+    });
+  };
+
+  const handleReleaseHold = async (holdId: string) => {
+    if (!confirm("Confirmer la levée de ce gel conservatoire ?")) return;
+    startTransition(async () => {
+      const res = await releaseDestructionHoldAction(holdId, matter.id);
+      if (!res.success) {
+        alert(res.error || "Erreur lors de la levée du gel");
+      } else {
+        router.refresh();
+      }
+    });
+  };
+
   const primaryClient = matter.parties?.find(
     (p: any) => p.party?.clientStatus === "CLIENT" || p.role === "CLIENT"
   )?.party;
@@ -573,6 +853,100 @@ export function MatterDetailClient({
           )}
         </div>
       </div>
+
+      {/* Gel Conservatoire (BR-15 Legal Hold) Banner */}
+      {matter.destructionHolds && matter.destructionHolds.length > 0 && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-rose-950 dark:text-rose-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="h-5 w-5 text-rose-600 dark:text-rose-400 mt-0.5 shrink-0" />
+            <div>
+              <div className="text-sm font-bold flex items-center gap-2">
+                {locale === "fr" ? "GEL CONSERVATOIRE ACTIF (Règle BR-15)" : "ACTIVE LEGAL HOLD (Rule BR-15)"}
+                <Badge variant="outline" className="border-rose-500/40 bg-rose-500/20 text-rose-800 dark:text-rose-300 text-[10px]">
+                  {matter.destructionHolds.length} {locale === "fr" ? "mesure(s)" : "hold(s)"}
+                </Badge>
+              </div>
+              <p className="text-xs text-rose-900/80 dark:text-rose-300/80 mt-1">
+                {locale === "fr"
+                  ? `Ce dossier fait l'objet d'un gel conservatoire légal ou judiciaire. Toute suppression ou purge définitive est strictement bloquée. Motif: « ${matter.destructionHolds[0]?.reason} » (posé par ${matter.destructionHolds[0]?.placedBy?.name || "un Associé"}).`
+                  : `This matter is under an active legal hold. All destruction and purge operations are blocked. Reason: "${matter.destructionHolds[0]?.reason}".`}
+              </p>
+            </div>
+          </div>
+          {isPartner && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isPending}
+              onClick={() => handleReleaseHold(matter.destructionHolds[0].id)}
+              className="border-rose-500/40 bg-card hover:bg-rose-500/20 text-xs shrink-0 gap-1.5"
+            >
+              <Unlock className="h-3.5 w-3.5" />
+              {locale === "fr" ? "Lever le gel conservatoire" : "Release Hold"}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Clôture / Archive Status Banner */}
+      {(matter.status === "CLOSED" || matter.status === "ARCHIVED") && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-950 dark:text-emerald-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+            <div>
+              <div className="text-sm font-bold">
+                {locale === "fr" ? "Dossier Clôturé & Conforme (Règle BR-14)" : "Matter Closed & Compliant (Rule BR-14)"}
+              </div>
+              <p className="text-xs text-emerald-900/80 dark:text-emerald-300/80 mt-1">
+                {locale === "fr"
+                  ? `Clôture validée par ${matter.closureApprovedBy?.name || "un Associé"} le ${matter.closedAt ? new Date(matter.closedAt).toLocaleDateString("fr-FR") : "—"}. Motif: « ${matter.closureReason || "Clôture régulière"} ».`
+                  : `Closure approved by ${matter.closureApprovedBy?.name || "a Partner"}. Reason: "${matter.closureReason || "Normal closure"}".`}
+              </p>
+            </div>
+          </div>
+          {isPartner && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setActiveTab("closure")}
+              className="border-emerald-500/40 bg-card hover:bg-emerald-500/20 text-xs shrink-0 gap-1.5"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {locale === "fr" ? "Gérer / Réouvrir" : "Manage / Reopen"}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {matter.status === "OPEN" && matter.closureRequestedAt && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-950 dark:text-amber-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <div className="text-sm font-bold">
+                {locale === "fr" ? "Demande de clôture en attente d'approbation Associé" : "Closure Request Pending Partner Approval"}
+              </div>
+              <p className="text-xs text-amber-900/80 dark:text-amber-300/80 mt-1">
+                {locale === "fr"
+                  ? `Demande initiée par ${matter.closureRequestedBy?.name || "un collaborateur"} le ${new Date(matter.closureRequestedAt).toLocaleDateString("fr-FR")}. Motif: « ${matter.closureReason} ».`
+                  : `Closure requested by ${matter.closureRequestedBy?.name || "a member"}. Reason: "${matter.closureReason}".`}
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setActiveTab("closure");
+              loadClosureReadiness();
+            }}
+            className="border-amber-500/40 bg-card hover:bg-amber-500/20 text-xs shrink-0 gap-1.5"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            {locale === "fr" ? "Examiner la clôture" : "Review Closure"}
+          </Button>
+        </div>
+      )}
 
       {/* Matter Workspace Header Strip */}
       <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
@@ -706,6 +1080,41 @@ export function MatterDetailClient({
             <span className="ml-1 rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] font-bold text-foreground">
               {matter.events?.length || 0}
             </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("communications")}
+            className={`border-b-2 py-3 text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+              activeTab === "communications"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+            }`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            {locale === "fr" ? "Correspondances" : "Communications"}
+            <span className="ml-1 rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] font-bold text-foreground">
+              {matter.communications?.length || 0}
+            </span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab("closure");
+              if (!closureReadiness) loadClosureReadiness();
+            }}
+            className={`border-b-2 py-3 text-xs font-semibold transition-colors flex items-center gap-1.5 ${
+              activeTab === "closure"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+            }`}
+          >
+            <Archive className="h-3.5 w-3.5" />
+            {locale === "fr" ? "Clôture & Rétention" : "Closure & Retention"}
+            {matter.destructionHolds && matter.destructionHolds.length > 0 && (
+              <span className="ml-1 rounded-full bg-rose-500/20 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 text-[10px] font-bold">
+                HOLD
+              </span>
+            )}
           </button>
 
           <button
@@ -1446,14 +1855,25 @@ export function MatterDetailClient({
                 : "Compliance Law 2024/017 & Traceability (DOC-05): Files stored locally under SHA-256 hashes. All downloads are audited."}
             </p>
             {canEdit && (
-              <Button
-                size="sm"
-                onClick={() => setIsUploadDocOpen(true)}
-                className="gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                <Upload className="h-3.5 w-3.5" />
-                {locale === "fr" ? "Verser un document" : "Upload Document"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenGenerateDocDrawer}
+                  className="gap-1.5 text-xs border-gold text-gold hover:bg-gold/10"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {locale === "fr" ? "Générer depuis un modèle" : "Generate from template"}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setIsUploadDocOpen(true)}
+                  className="gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {locale === "fr" ? "Verser un document" : "Upload Document"}
+                </Button>
+              </div>
             )}
           </div>
 
@@ -1930,6 +2350,407 @@ export function MatterDetailClient({
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Communications Tab (LEG-09 / MOD-12) */}
+      {activeTab === "communications" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-foreground">
+                {locale === "fr" ? "Registre des Communications & Échanges" : "Communications & Correspondence Register"}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {locale === "fr"
+                  ? "Historique certifié des appels, courriers, emails, échanges WhatsApp et audiences liés à ce dossier (LEG-09)."
+                  : "Certified tracking of client and opposing party communications."}
+              </p>
+            </div>
+
+            {canEdit && (
+              <Button
+                size="sm"
+                onClick={() => setIsAddCommOpen(true)}
+                className="gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {locale === "fr" ? "Consigner un échange" : "Log Communication"}
+              </Button>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-muted/50 border-b border-border text-xs uppercase font-semibold text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">{locale === "fr" ? "Date" : "Date"}</th>
+                    <th className="px-4 py-3">{locale === "fr" ? "Canal & Sens" : "Channel & Direction"}</th>
+                    <th className="px-4 py-3">{locale === "fr" ? "Objet / Contenu" : "Subject & Content"}</th>
+                    <th className="px-4 py-3">{locale === "fr" ? "Pièce jointe" : "Attachment"}</th>
+                    <th className="px-4 py-3">{locale === "fr" ? "Auteur" : "Author"}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(!matter.communications || matter.communications.length === 0) ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-xs">
+                        {locale === "fr"
+                          ? "Aucune communication consignée dans ce dossier pour le moment."
+                          : "No communications logged in this matter yet."}
+                      </td>
+                    </tr>
+                  ) : (
+                    matter.communications.map((comm: any) => {
+                      const channelIcons: Record<string, string> = {
+                        EMAIL: "📧 Email",
+                        PHONE: "📞 Téléphone",
+                        LETTER: "✉️ Courrier",
+                        WHATSAPP: "💬 WhatsApp",
+                        MEETING: "👥 Rendez-vous",
+                        SMS: "📱 SMS",
+                      };
+                      return (
+                        <tr key={comm.id} className="hover:bg-muted/30 transition text-xs">
+                          <td className="px-4 py-3 whitespace-nowrap font-mono text-muted-foreground">
+                            {new Date(comm.occurredAt).toLocaleDateString("fr-FR", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant="outline" className="text-[10px] bg-muted/30">
+                                {channelIcons[comm.channel] || comm.channel}
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] ${
+                                  comm.direction === "INBOUND"
+                                    ? "bg-blue-500/10 text-blue-700 border-blue-500/30"
+                                    : comm.direction === "OUTBOUND"
+                                    ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
+                                    : "bg-muted text-muted-foreground"
+                                }`}
+                              >
+                                {comm.direction === "INBOUND"
+                                  ? (locale === "fr" ? "Entrant" : "Inbound")
+                                  : comm.direction === "OUTBOUND"
+                                  ? (locale === "fr" ? "Sortant" : "Outbound")
+                                  : (locale === "fr" ? "Interne" : "Internal")}
+                              </Badge>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {comm.subject && (
+                              <div className="font-semibold text-foreground">{comm.subject}</div>
+                            )}
+                            {comm.body && (
+                              <div className="text-muted-foreground text-[11px] line-clamp-2 mt-0.5">
+                                {comm.body}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {comm.document ? (
+                              <Link
+                                href={`/api/documents/${comm.document.id}/download`}
+                                className="text-primary hover:underline font-mono text-[11px] flex items-center gap-1"
+                              >
+                                <FileText className="h-3 w-3" />
+                                {comm.document.title || comm.document.filename}
+                              </Link>
+                            ) : (
+                              <span className="text-muted-foreground text-[11px]">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-muted-foreground font-medium">
+                            {comm.author?.name || "Système"}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Closure & Retention Governance Tab (BR-14 & BR-15) */}
+      {activeTab === "closure" && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-gold" />
+                {locale === "fr" ? "Gouvernance de Clôture & Rétention Légale" : "Closure & Retention Governance"}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {locale === "fr"
+                  ? "Conformité déontologique OHADA / Barreau du Cameroun : vérification des prérequis de clôture (BR-14) et gestion des gels conservatoires (BR-15)."
+                  : "OHADA / Cameroon Bar compliance: closure readiness (BR-14) and legal destruction holds (BR-15)."}
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={loadClosureReadiness}
+              disabled={isLoadingReadiness}
+              className="gap-1.5 text-xs"
+            >
+              <RotateCcw className={`h-3.5 w-3.5 ${isLoadingReadiness ? "animate-spin" : ""}`} />
+              {locale === "fr" ? "Vérifier la conformité" : "Check Readiness"}
+            </Button>
+          </div>
+
+          {closureActionError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {closureActionError}
+            </div>
+          )}
+
+          {/* BR-14 Readiness Checklist Grid */}
+          <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-sm font-bold text-foreground">
+                {locale === "fr" ? "Grille d'Audit Pré-Clôture (Règle BR-14)" : "Pre-Closure Compliance Checklist (BR-14)"}
+              </h3>
+              {closureReadiness && (
+                <Badge
+                  variant="outline"
+                  className={`text-xs font-bold ${
+                    closureReadiness.ready
+                      ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
+                      : "bg-rose-500/10 text-rose-700 border-rose-500/30"
+                  }`}
+                >
+                  {closureReadiness.ready
+                    ? (locale === "fr" ? "Prêt pour clôture ✓" : "Ready for Closure ✓")
+                    : (locale === "fr" ? "Clôture Bloquée ⚠️" : "Closure Blocked ⚠️")}
+                </Badge>
+              )}
+            </div>
+
+            {isLoadingReadiness ? (
+              <div className="py-6 text-center text-xs text-muted-foreground">
+                {locale === "fr" ? "Contrôle des critères déontologiques en cours..." : "Checking compliance prerequisites..."}
+              </div>
+            ) : closureReadiness ? (
+              <div className="space-y-3">
+                {closureReadiness.checks.map((c: any) => (
+                  <div
+                    key={c.id}
+                    className={`p-3 rounded-lg border text-xs flex items-start justify-between gap-3 ${
+                      c.passed
+                        ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-900 dark:text-emerald-200"
+                        : "border-rose-500/20 bg-rose-500/5 text-rose-900 dark:text-rose-200"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      {c.passed ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-400 mt-0.5 shrink-0" />
+                      )}
+                      <div>
+                        <div className="font-semibold">{c.label}</div>
+                        <div className="text-[11px] opacity-80 mt-0.5">{c.details}</div>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] shrink-0">
+                      {c.passed ? "CONFORME" : "NON CONFORME"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-4 text-center text-xs text-muted-foreground">
+                <Button size="sm" variant="outline" onClick={loadClosureReadiness}>
+                  {locale === "fr" ? "Lancer l'audit de clôture" : "Run Closure Audit"}
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Closure Actions Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Step 1: Request Closure */}
+            <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-3">
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <Clock className="h-4 w-4 text-primary" />
+                {locale === "fr" ? "1. Demande de clôture formelle" : "1. Request Closure"}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {locale === "fr"
+                  ? "Tout avocat ou collaborateur assigné peut initier la demande de clôture en précisant le motif juridique ou contractuel."
+                  : "Any assigned lawyer may request closure with a written justification."}
+              </p>
+
+              {matter.status === "OPEN" ? (
+                <form onSubmit={handleRequestClosure} className="space-y-3 pt-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="closureReason">{locale === "fr" ? "Motif de clôture *" : "Closure Reason *"}</Label>
+                    <Input
+                      id="closureReason"
+                      value={closureReasonInput}
+                      onChange={(e) => setClosureReasonInput(e.target.value)}
+                      placeholder="ex: Transaction signée et exécutée, jugement définitif rendu..."
+                      required
+                    />
+                  </div>
+                  <Button type="submit" size="sm" disabled={isPending} className="w-full text-xs">
+                    {locale === "fr" ? "Soumettre la demande de clôture" : "Submit Closure Request"}
+                  </Button>
+                </form>
+              ) : (
+                <div className="p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground">
+                  {locale === "fr"
+                    ? `Dossier actuellement en statut ${matter.status}.`
+                    : `Matter is currently ${matter.status}.`}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Partner Approval Gate */}
+            <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-3">
+              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-gold" />
+                {locale === "fr" ? "2. Décision de l'Associé (Gate Déontologique)" : "2. Partner Approval"}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {locale === "fr"
+                  ? "Conformément à la règle BR-14, seul un Associé peut valider la clôture définitive. Tous les critères pré-clôture doivent être satisfaits."
+                  : "Pursuant to BR-14, only a Partner can authorize formal closure once all checks pass."}
+              </p>
+
+              {isPartner ? (
+                matter.status === "OPEN" ? (
+                  <div className="space-y-3 pt-2">
+                    <label className="flex items-center gap-2 text-xs text-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={closureArchiveImmediately}
+                        onChange={(e) => setClosureArchiveImmediately(e.target.checked)}
+                        className="rounded border-input text-primary"
+                      />
+                      <span className="font-medium">
+                        {locale === "fr" ? "Archiver immédiatement le dossier" : "Archive immediately"}
+                      </span>
+                    </label>
+
+                    <Button
+                      size="sm"
+                      onClick={handleApproveClosure}
+                      disabled={isPending || (closureReadiness && !closureReadiness.ready)}
+                      className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                      {locale === "fr" ? "Approuver la clôture définitive" : "Approve Formal Closure"}
+                    </Button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleReopenMatter} className="space-y-3 pt-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="reopenJust">{locale === "fr" ? "Justification de réouverture *" : "Reopen Justification *"}</Label>
+                      <Input
+                        id="reopenJust"
+                        value={reopenJustificationInput}
+                        onChange={(e) => setReopenJustificationInput(e.target.value)}
+                        placeholder="ex: Nouvel acte signifié, recours en cassation..."
+                        required
+                      />
+                    </div>
+                    <Button type="submit" size="sm" variant="outline" disabled={isPending} className="w-full text-xs gap-1.5">
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {locale === "fr" ? "Réouvrir le dossier" : "Reopen Matter"}
+                    </Button>
+                  </form>
+                )
+              ) : (
+                <div className="p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground">
+                  {locale === "fr"
+                    ? "Réservé aux Associés du cabinet (permission matter.validate_closure)."
+                    : "Reserved to Partners."}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* BR-15 Legal Holds (Gel Conservatoire) Section */}
+          <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                  {locale === "fr" ? "Gels Conservatoires & Rétention Documentaire (Règle BR-15)" : "Legal Holds & Document Retention (BR-15)"}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {locale === "fr"
+                    ? "Un gel conservatoire interdit formellement la purge ou la destruction des pièces, même après expiration des délais d'archivage légaux."
+                    : "Legal holds strictly block any destruction request or purge execution."}
+                </p>
+              </div>
+
+              {isPartner && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsAddHoldOpen(true)}
+                  className="gap-1.5 text-xs border-rose-500/40 text-rose-700 hover:bg-rose-500/10"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  {locale === "fr" ? "Poser un gel conservatoire" : "Place Legal Hold"}
+                </Button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {(!matter.destructionHolds || matter.destructionHolds.length === 0) ? (
+                <div className="py-4 text-center text-xs text-muted-foreground">
+                  {locale === "fr"
+                    ? "Aucun gel conservatoire actif sur ce dossier. Les règles de conservation normales s'appliquent."
+                    : "No active legal holds. Standard retention policy applies."}
+                </div>
+              ) : (
+                matter.destructionHolds.map((h: any) => (
+                  <div
+                    key={h.id}
+                    className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/5 text-xs flex items-center justify-between gap-3"
+                  >
+                    <div>
+                      <div className="font-bold text-rose-950 dark:text-rose-200 flex items-center gap-2">
+                        <Lock className="h-3.5 w-3.5 text-rose-600" />
+                        {h.reason}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                        {locale === "fr" ? "Posé le" : "Placed on"} {new Date(h.placedAt).toLocaleDateString("fr-FR")} {h.placedBy ? `par ${h.placedBy.name}` : ""}
+                      </div>
+                    </div>
+
+                    {isPartner && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleReleaseHold(h.id)}
+                        disabled={isPending}
+                        className="text-xs text-rose-700 hover:bg-rose-500/15 border-rose-500/30"
+                      >
+                        <Unlock className="h-3.5 w-3.5 mr-1" />
+                        {locale === "fr" ? "Lever le gel" : "Release Hold"}
+                      </Button>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -2529,6 +3350,168 @@ export function MatterDetailClient({
         </form>
       </SidePanel>
 
+      {/* Document Generation SidePanel Drawer (Step 26: INT-05) */}
+      <SidePanel
+        open={isGenerateDocOpen}
+        onOpenChange={setIsGenerateDocOpen}
+        title={locale === "fr" ? "Générer un acte depuis un modèle" : "Generate Document from Template"}
+        subtitle={matter.reference + " — " + matter.title}
+      >
+        <form onSubmit={handleExecuteGenerateDoc} className="space-y-4">
+          {genDocError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {genDocError}
+            </div>
+          )}
+
+          {/* Template Selector */}
+          <div className="space-y-1.5">
+            <Label htmlFor="templateSelect">
+              {locale === "fr" ? "Modèle d'acte juridique *" : "Legal Document Template *"}
+            </Label>
+            <select
+              id="templateSelect"
+              value={selectedTemplateId}
+              onChange={(e) => handleSelectTemplate(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              required
+            >
+              {availableTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {locale === "en" ? t.nameEn : t.nameFr} ({t.locale})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Selected Template Variables Inputs */}
+          {(() => {
+            const currentTpl = availableTemplates.find((t) => t.id === selectedTemplateId);
+            const varDefs = Array.isArray(currentTpl?.variables) ? currentTpl.variables : [];
+            if (varDefs.length === 0) return null;
+
+            return (
+              <div className="space-y-3 rounded-lg border border-border/80 bg-muted/20 p-3.5">
+                <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  {locale === "fr" ? "Paramètres personnalisés de l'acte" : "Custom Template Variables"}
+                </p>
+
+                {varDefs.map((v: any) => (
+                  <div key={v.key} className="space-y-1">
+                    <Label htmlFor={`var_${v.key}`} className="text-xs">
+                      {locale === "en" ? v.labelEn : v.labelFr} {v.required ? "*" : ""}
+                    </Label>
+                    {v.type === "textarea" ? (
+                      <textarea
+                        id={`var_${v.key}`}
+                        rows={3}
+                        value={templateCustomVars[v.key] ?? v.defaultValue ?? ""}
+                        onChange={(e) => handleCustomVarChange(v.key, e.target.value)}
+                        className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        required={v.required}
+                      />
+                    ) : (
+                      <Input
+                        id={`var_${v.key}`}
+                        type={v.type === "number" ? "number" : "text"}
+                        value={templateCustomVars[v.key] ?? v.defaultValue ?? ""}
+                        onChange={(e) => handleCustomVarChange(v.key, e.target.value)}
+                        className="text-xs h-8"
+                        required={v.required}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Document Title & Category */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="genDocTitleInput">{locale === "fr" ? "Intitulé du document *" : "Document Title *"}</Label>
+              <Input
+                id="genDocTitleInput"
+                value={genDocTitle}
+                onChange={(e) => setGenDocTitle(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="genDocCatSelect">{locale === "fr" ? "Catégorie" : "Category"}</Label>
+              <select
+                id="genDocCatSelect"
+                value={genDocCategoryId}
+                onChange={(e) => setGenDocCategoryId(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                {docCategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {locale === "en" ? c.nameEn : c.nameFr}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Live Preview Box */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold">
+                {locale === "fr" ? "Aperçu en direct du texte fusionné" : "Live Rendered Preview"}
+              </Label>
+              {missingPreviewVars.length > 0 ? (
+                <span className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded font-medium">
+                  {missingPreviewVars.length} {locale === "fr" ? "variable(s) à compléter" : "variable(s) to complete"}
+                </span>
+              ) : (
+                <span className="text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded font-medium">
+                  {locale === "fr" ? "Toutes les variables sont renseignées" : "All variables complete"}
+                </span>
+              )}
+            </div>
+
+            <div className="relative rounded-md border border-border bg-muted/40 p-3 max-h-56 overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap select-all">
+              {isLoadingPreview ? (
+                <div className="text-muted-foreground text-center py-6">
+                  {locale === "fr" ? "Actualisation de l'aperçu..." : "Updating preview..."}
+                </div>
+              ) : (
+                renderedPreview || (
+                  <span className="text-muted-foreground italic">
+                    {locale === "fr" ? "Sélectionnez un modèle pour visualiser le rendu." : "Select a template to preview."}
+                  </span>
+                )
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="genDocCommentInput">{locale === "fr" ? "Commentaire de classement" : "Filing Comment"}</Label>
+            <Input
+              id="genDocCommentInput"
+              value={genDocComment}
+              onChange={(e) => setGenDocComment(e.target.value)}
+              placeholder="ex: Génération initiale de l'acte sous mandat..."
+            />
+          </div>
+
+          <div className="pt-4 flex justify-end gap-2 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsGenerateDocOpen(false)}
+            >
+              {locale === "fr" ? "Annuler" : "Cancel"}
+            </Button>
+            <Button type="submit" disabled={isPending || isLoadingPreview || !selectedTemplateId}>
+              {locale === "fr" ? "Générer et classer dans le dossier" : "Generate & File in Matter"}
+            </Button>
+          </div>
+        </form>
+      </SidePanel>
+
       {/* Add Task SidePanel Drawer (TSK-01) */}
       <SidePanel
         open={isAddTaskOpen}
@@ -2623,6 +3606,169 @@ export function MatterDetailClient({
             </Button>
             <Button type="submit" disabled={isPending}>
               {locale === "fr" ? "Créer la tâche" : "Create Task"}
+            </Button>
+          </div>
+        </form>
+      </SidePanel>
+
+      {/* Log Communication Drawer (LEG-09 / MOD-12) */}
+      <SidePanel
+        open={isAddCommOpen}
+        onOpenChange={setIsAddCommOpen}
+        title={locale === "fr" ? "Consigner un échange / correspondance" : "Log Communication"}
+        subtitle={matter.title}
+      >
+        <form onSubmit={handleCreateCommunication} className="space-y-4">
+          {commError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {commError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="commChannelSelect">{locale === "fr" ? "Canal de communication" : "Channel"}</Label>
+              <select
+                id="commChannelSelect"
+                value={commChannel}
+                onChange={(e) => setCommChannel(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="EMAIL">Email</option>
+                <option value="PHONE">Téléphone</option>
+                <option value="LETTER">Courrier postal</option>
+                <option value="WHATSAPP">WhatsApp</option>
+                <option value="MEETING">Rendez-vous physique</option>
+                <option value="SMS">SMS</option>
+                <option value="OTHER">Autre</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="commDirSelect">{locale === "fr" ? "Sens" : "Direction"}</Label>
+              <select
+                id="commDirSelect"
+                value={commDirection}
+                onChange={(e) => setCommDirection(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="OUTBOUND">{locale === "fr" ? "Sortant (du cabinet)" : "Outbound"}</option>
+                <option value="INBOUND">{locale === "fr" ? "Entrant (vers le cabinet)" : "Inbound"}</option>
+                <option value="INTERNAL">{locale === "fr" ? "Note interne" : "Internal"}</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="commSubject">{locale === "fr" ? "Objet de la communication *" : "Subject *"}</Label>
+            <Input
+              id="commSubject"
+              value={commSubject}
+              onChange={(e) => setCommSubject(e.target.value)}
+              placeholder="ex: Transmission du protocole d'accord transactionnel"
+              required
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="commBody">{locale === "fr" ? "Résumé des échanges / Contenu" : "Content / Summary"}</Label>
+            <textarea
+              id="commBody"
+              rows={4}
+              value={commBody}
+              onChange={(e) => setCommBody(e.target.value)}
+              placeholder="ex: Appel téléphonique avec le conseil adverse; confirmation de la date butoir au 15 du mois."
+              className="w-full rounded-md border border-input bg-background p-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="commDocSelect">{locale === "fr" ? "Document attaché (optionnel)" : "Attached Document"}</Label>
+            <select
+              id="commDocSelect"
+              value={commDocumentId}
+              onChange={(e) => setCommDocumentId(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="">{locale === "fr" ? "— Aucun document rattaché —" : "— None —"}</option>
+              {matter.documents?.map((d: any) => (
+                <option key={d.id} value={d.id}>
+                  {d.title || d.filename}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="commDate">{locale === "fr" ? "Date et heure de l'échange" : "Date & Time"}</Label>
+            <Input
+              id="commDate"
+              type="datetime-local"
+              value={commOccurredAt}
+              onChange={(e) => setCommOccurredAt(e.target.value)}
+            />
+          </div>
+
+          <div className="pt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAddCommOpen(false)}
+            >
+              {locale === "fr" ? "Annuler" : "Cancel"}
+            </Button>
+            <Button type="submit" disabled={isPending}>
+              {locale === "fr" ? "Consigner l'échange" : "Save Communication"}
+            </Button>
+          </div>
+        </form>
+      </SidePanel>
+
+      {/* Place Legal Hold Drawer (BR-15) */}
+      <SidePanel
+        open={isAddHoldOpen}
+        onOpenChange={setIsAddHoldOpen}
+        title={locale === "fr" ? "Poser un gel conservatoire (Règle BR-15)" : "Place Legal Hold"}
+        subtitle={matter.title}
+      >
+        <form onSubmit={handlePlaceHold} className="space-y-4">
+          {holdActionError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {holdActionError}
+            </div>
+          )}
+
+          <div className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/5 text-xs text-rose-900 dark:text-rose-200">
+            <strong>{locale === "fr" ? "Effet juridique strict :" : "Strict Legal Effect:"}</strong>{" "}
+            {locale === "fr"
+              ? "La pose d'un gel conservatoire bloque immédiatement toute tentative de destruction ou de purge de ce dossier et de ses documents jusqu'à levée expresse par un Associé."
+              : "A legal hold immediately and strictly blocks any destruction or purge of this matter."}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="holdReasonInput">{locale === "fr" ? "Motif légal ou judiciaire du gel *" : "Legal Reason *"}</Label>
+            <textarea
+              id="holdReasonInput"
+              rows={4}
+              value={holdReasonInput}
+              onChange={(e) => setHoldReasonInput(e.target.value)}
+              placeholder="ex: Enquête préliminaire en cours du Parquet, litige connexe pendant devant la CCJA..."
+              className="w-full rounded-md border border-input bg-background p-3 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              required
+            />
+          </div>
+
+          <div className="pt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAddHoldOpen(false)}
+            >
+              {locale === "fr" ? "Annuler" : "Cancel"}
+            </Button>
+            <Button type="submit" disabled={isPending} className="bg-rose-600 hover:bg-rose-700 text-white">
+              <Lock className="h-3.5 w-3.5 mr-1" />
+              {locale === "fr" ? "Activer le gel conservatoire" : "Activate Legal Hold"}
             </Button>
           </div>
         </form>

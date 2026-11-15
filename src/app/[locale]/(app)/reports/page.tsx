@@ -3,6 +3,7 @@ import { getServerSession } from "@/server/auth/session";
 import { redirect } from "next/navigation";
 import { db } from "@/server/db";
 import { accessibleMatterFilter } from "@/server/auth/matter-access";
+import { getLawyerWorkloadOverview } from "@/server/services/workload-service";
 import { ReportsClient } from "./reports-client";
 
 export default async function ReportsPage({
@@ -30,6 +31,7 @@ export default async function ReportsPage({
     doneTasks,
     overdueTasks,
     upcomingHearings,
+    lawyerWorkloads,
   ] = await Promise.all([
     db.matter.count({ where: matterFilter }),
     db.matterCategory.findMany({
@@ -68,6 +70,7 @@ export default async function ReportsPage({
       orderBy: { startsAt: "asc" },
       take: 6,
     }),
+    getLawyerWorkloadOverview(session).catch(() => []),
   ]);
 
   const categoryDistribution = categoriesWithCount.map((c) => ({
@@ -99,6 +102,7 @@ export default async function ReportsPage({
       doneTasks={doneTasks}
       overdueTasks={overdueTasks}
       upcomingHearings={serializedHearings}
+      lawyerWorkloads={lawyerWorkloads}
       locale={locale}
       currentUserRole={session.user.roleKey}
     />

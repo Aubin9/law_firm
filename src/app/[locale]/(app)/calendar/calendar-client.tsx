@@ -21,6 +21,12 @@ import {
   FileText,
   X,
   ExternalLink,
+  Copy,
+  Check,
+  Share2,
+  KeyRound,
+  ShieldAlert,
+  Globe,
 } from "lucide-react";
 import { EventStatus, EventType } from "@prisma/client";
 import { Button } from "@/components/ui/button";
@@ -34,6 +40,12 @@ import {
   validateProceduralDeadlineAction,
   cancelEventAction,
 } from "@/server/actions/event-actions";
+import {
+  getCalendarFeedUrlAction,
+  regenerateCalendarTokenAction,
+  revokeCalendarTokenAction,
+  toggleCalendarSyncFlagAction,
+} from "@/server/actions/calendar-sync-actions";
 
 export interface SerializedEvent {
   id: string;
@@ -143,6 +155,113 @@ export function CalendarClient({
   const [postponeDate, setPostponeDate] = useState("");
   const [postponeReason, setPostponeReason] = useState("");
   const [postponeLocation, setPostponeLocation] = useState("");
+
+  // Calendar Sync State (INT-03)
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [feedUrl, setFeedUrl] = useState<string>("");
+  const [isFeedEnabled, setIsFeedEnabled] = useState<boolean>(false);
+  const [copiedFeed, setCopiedFeed] = useState<boolean>(false);
+  const [isSyncLoading, setIsSyncLoading] = useState<boolean>(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
+
+  const handleOpenSyncModal = async () => {
+    setIsSyncModalOpen(true);
+    setIsSyncLoading(true);
+    setSyncError(null);
+    setSyncSuccessMsg(null);
+    try {
+      const res = await getCalendarFeedUrlAction();
+      if (res.success) {
+        setFeedUrl(res.feedUrl);
+        setIsFeedEnabled(res.enabled);
+      } else {
+        setSyncError(res.error || "Impossible de charger le lien d'agenda.");
+      }
+    } catch (err: any) {
+      setSyncError(err.message || "Erreur de chargement.");
+    } finally {
+      setIsSyncLoading(false);
+    }
+  };
+
+  const handleCopyFeed = async () => {
+    if (!feedUrl) return;
+    try {
+      await navigator.clipboard.writeText(feedUrl);
+      setCopiedFeed(true);
+      setTimeout(() => setCopiedFeed(false), 2500);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleRegenerateToken = async () => {
+    if (!confirm("Voulez-vous vraiment régénérer votre lien ? L'ancien lien cessera immédiatement de fonctionner.")) {
+      return;
+    }
+    setIsSyncLoading(true);
+    setSyncError(null);
+    setSyncSuccessMsg(null);
+    try {
+      const res = await regenerateCalendarTokenAction();
+      if (res.success) {
+        setFeedUrl(res.feedUrl);
+        setSyncSuccessMsg("Nouveau lien d'agenda généré avec succès. L'ancien lien a été révoqué.");
+      } else {
+        setSyncError(res.error || "Erreur de régénération.");
+      }
+    } catch (err: any) {
+      setSyncError(err.message || "Erreur inconnue");
+    } finally {
+      setIsSyncLoading(false);
+    }
+  };
+
+  const handleRevokeToken = async () => {
+    if (!confirm("Attention : Êtes-vous sûr de vouloir révoquer votre lien d'agenda ? La synchronisation externe sera coupée net.")) {
+      return;
+    }
+    setIsSyncLoading(true);
+    setSyncError(null);
+    setSyncSuccessMsg(null);
+    try {
+      const res = await revokeCalendarTokenAction();
+      if (res.success) {
+        setFeedUrl("");
+        setSyncSuccessMsg("Accès révoqué avec succès. Aucune synchronisation externe n'est active pour votre compte.");
+      } else {
+        setSyncError(res.error || "Erreur de révocation.");
+      }
+    } catch (err: any) {
+      setSyncError(err.message || "Erreur inconnue");
+    } finally {
+      setIsSyncLoading(false);
+    }
+  };
+
+  const handleToggleSyncFlag = async (enabled: boolean) => {
+    setIsSyncLoading(true);
+    setSyncError(null);
+    setSyncSuccessMsg(null);
+    try {
+      const res = await toggleCalendarSyncFlagAction(enabled);
+      if (res.success) {
+        setIsFeedEnabled(enabled);
+        setSyncSuccessMsg(
+          enabled
+            ? "Synchronisation du calendrier activée pour le cabinet."
+            : "Synchronisation du calendrier désactivée (Air-gap rétabli)."
+        );
+      } else {
+        setSyncError(res.error || "Erreur de modification du drapeau.");
+      }
+    } catch (err: any) {
+      setSyncError(err.message || "Erreur inconnue");
+    } finally {
+      setIsSyncLoading(false);
+    }
+  };
 
   const canValidateDeadline =
     currentUserRole === "PARTNER" ||
@@ -439,10 +558,18 @@ export function CalendarClient({
 
         <div className="flex items-center gap-2">
           <Button
-            onClick={() => setIsCreateOpen(true)}
-            className="bg-[#1F2A44] hover:bg-[#1F2A44]/90 text-white font-medium"
+            variant="outline"
+            onClick={handleOpenSyncModal}
+            className="border-[#B08D57] text-[#B08D57] hover:bg-[#B08D57]/10 font-medium text-xs sm:text-sm"
           >
-            <Plus className="h-4 w-4 mr-2" />
+            <Share2 className="h-4 w-4 mr-1.5" />
+            Synchroniser (iCal)
+          </Button>
+          <Button
+            onClick={() => setIsCreateOpen(true)}
+            className="bg-[#1F2A44] hover:bg-[#1F2A44]/90 text-white font-medium text-xs sm:text-sm"
+          >
+            <Plus className="h-4 w-4 mr-1.5" />
             {t("newEvent")}
           </Button>
         </div>
@@ -1163,6 +1290,179 @@ export function CalendarClient({
         </div>
       )}
 
+      {/* Calendar Synchronisation Modal (Step 26: INT-03) */}
+      {isSyncModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="bg-card border border-border rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-[#B08D57]" />
+                <h3 className="font-serif font-bold text-lg text-[#1F2A44] dark:text-slate-100">
+                  Abonnement & Synchronisation d&apos;Agenda (iCal)
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsSyncModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Error or Success notification */}
+            {syncError && (
+              <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>{syncError}</span>
+              </div>
+            )}
+            {syncSuccessMsg && (
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{syncSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Status & Preconditions Badge */}
+            <div className="p-3 rounded-lg border border-border bg-muted/20 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground uppercase">
+                  Statut de l&apos;intégration au cabinet :
+                </span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded font-bold ${
+                      isFeedEnabled
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-slate-200 text-slate-700"
+                    }`}
+                  >
+                    {isFeedEnabled ? "ACTIVÉE" : "DÉSACTIVÉE (Air-gap)"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {isFeedEnabled
+                      ? "Le flux d'agenda est accessible via votre jeton privé."
+                      : "La passerelle externe est coupée. Activez le drapeau ci-dessous."}
+                  </span>
+                </div>
+              </div>
+
+              {(currentUserRole === "PARTNER" ||
+                currentUserRole === "TECHNICAL_ADMIN") && (
+                <button
+                  type="button"
+                  onClick={() => handleToggleSyncFlag(!isFeedEnabled)}
+                  disabled={isSyncLoading}
+                  className={`text-xs px-2.5 py-1 rounded font-medium border transition ${
+                    isFeedEnabled
+                      ? "bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100"
+                      : "bg-emerald-600 text-white hover:bg-emerald-700"
+                  }`}
+                >
+                  {isFeedEnabled ? "Couper le flux (Off switch)" : "Activer pour le cabinet"}
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Ce flux iCalendar (RFC 5545) permet de synchroniser automatiquement vos audiences,
+              délais de procédure et rendez-vous dans Google Calendar, Microsoft Outlook ou Apple Calendar.
+              Conformément à la politique de confidentialité, les dossiers <strong>STRICT</strong> ont leurs
+              données sensibles automatiquement masquées sur le calendrier externe.
+            </p>
+
+            {/* Feed URL Field with copy button */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase text-muted-foreground">
+                Votre lien d&apos;abonnement personnel sécurisé
+              </Label>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  type="text"
+                  value={
+                    feedUrl
+                      ? feedUrl
+                      : isSyncLoading
+                      ? "Chargement de votre jeton..."
+                      : "Aucun jeton actif (révoqué)"
+                  }
+                  className="w-full px-3 py-2 text-xs font-mono bg-muted/30 border border-border rounded-lg select-all focus:outline-none"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!feedUrl || isSyncLoading}
+                  onClick={handleCopyFeed}
+                  className="shrink-0 gap-1.5 text-xs"
+                >
+                  {copiedFeed ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-600" />
+                      Copié !
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      Copier
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick guide */}
+            <div className="rounded-lg border border-border/80 bg-background p-3 text-[11px] text-muted-foreground space-y-1">
+              <span className="font-semibold text-foreground uppercase tracking-wider block mb-1">
+                Comment s&apos;abonner :
+              </span>
+              <p>• <strong>Google Calendar</strong> : Autres agendas (+) &rarr; À partir de l&apos;URL &rarr; Collez le lien ci-dessus.</p>
+              <p>• <strong>Microsoft Outlook</strong> : Ajouter un calendrier &rarr; S&apos;abonner à partir du web &rarr; Collez l&apos;URL.</p>
+              <p>• <strong>Apple Calendar</strong> : Fichier &rarr; Nouvel abonnement à un calendrier &rarr; Collez l&apos;URL.</p>
+            </div>
+
+            {/* Emergency Token Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSyncLoading}
+                  onClick={handleRegenerateToken}
+                  className="text-xs gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+                  title="Invalide immédiatement l'ancien lien et en génère un nouveau"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Régénérer le jeton
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSyncLoading || !feedUrl}
+                  onClick={handleRevokeToken}
+                  className="text-xs gap-1.5 border-rose-300 text-rose-700 hover:bg-rose-50"
+                  title="Coupe immédiatement toute synchronisation externe pour votre compte"
+                >
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  Révoquer l&apos;accès (Killswitch)
+                </Button>
+              </div>
+
+              <Button
+                type="button"
+                onClick={() => setIsSyncModalOpen(false)}
+                className="text-xs bg-[#1F2A44] text-white"
+              >
+                Fermer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Postpone Hearing Modal (BR-05 / CAL-03) */}
       {isPostponeOpen && eventToPostpone && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
@@ -1250,6 +1550,179 @@ export function CalendarClient({
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Calendar Synchronisation Modal (Step 26: INT-03) */}
+      {isSyncModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
+          <div className="bg-card border border-border rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-[#B08D57]" />
+                <h3 className="font-serif font-bold text-lg text-[#1F2A44] dark:text-slate-100">
+                  Abonnement & Synchronisation d&apos;Agenda (iCal)
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsSyncModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Error or Success notification */}
+            {syncError && (
+              <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>{syncError}</span>
+              </div>
+            )}
+            {syncSuccessMsg && (
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{syncSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Status & Preconditions Badge */}
+            <div className="p-3 rounded-lg border border-border bg-muted/20 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground uppercase">
+                  Statut de l&apos;intégration au cabinet :
+                </span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded font-bold ${
+                      isFeedEnabled
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-slate-200 text-slate-700"
+                    }`}
+                  >
+                    {isFeedEnabled ? "ACTIVÉE" : "DÉSACTIVÉE (Air-gap)"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {isFeedEnabled
+                      ? "Le flux d'agenda est accessible via votre jeton privé."
+                      : "La passerelle externe est coupée. Activez le drapeau ci-dessous."}
+                  </span>
+                </div>
+              </div>
+
+              {(currentUserRole === "PARTNER" ||
+                currentUserRole === "TECHNICAL_ADMIN") && (
+                <button
+                  type="button"
+                  onClick={() => handleToggleSyncFlag(!isFeedEnabled)}
+                  disabled={isSyncLoading}
+                  className={`text-xs px-2.5 py-1 rounded font-medium border transition ${
+                    isFeedEnabled
+                      ? "bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100"
+                      : "bg-emerald-600 text-white hover:bg-emerald-700"
+                  }`}
+                >
+                  {isFeedEnabled ? "Couper le flux (Off switch)" : "Activer pour le cabinet"}
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Ce flux iCalendar (RFC 5545) permet de synchroniser automatiquement vos audiences,
+              délais de procédure et rendez-vous dans Google Calendar, Microsoft Outlook ou Apple Calendar.
+              Conformément à la politique de confidentialité, les dossiers <strong>STRICT</strong> ont leurs
+              données sensibles automatiquement masquées sur le calendrier externe.
+            </p>
+
+            {/* Feed URL Field with copy button */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase text-muted-foreground">
+                Votre lien d&apos;abonnement personnel sécurisé
+              </Label>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  type="text"
+                  value={
+                    feedUrl
+                      ? feedUrl
+                      : isSyncLoading
+                      ? "Chargement de votre jeton..."
+                      : "Aucun jeton actif (révoqué)"
+                  }
+                  className="w-full px-3 py-2 text-xs font-mono bg-muted/30 border border-border rounded-lg select-all focus:outline-none"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!feedUrl || isSyncLoading}
+                  onClick={handleCopyFeed}
+                  className="shrink-0 gap-1.5 text-xs"
+                >
+                  {copiedFeed ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-600" />
+                      Copié !
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      Copier
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick guide */}
+            <div className="rounded-lg border border-border/80 bg-background p-3 text-[11px] text-muted-foreground space-y-1">
+              <span className="font-semibold text-foreground uppercase tracking-wider block mb-1">
+                Comment s&apos;abonner :
+              </span>
+              <p>• <strong>Google Calendar</strong> : Autres agendas (+) &rarr; À partir de l&apos;URL &rarr; Collez le lien ci-dessus.</p>
+              <p>• <strong>Microsoft Outlook</strong> : Ajouter un calendrier &rarr; S&apos;abonner à partir du web &rarr; Collez l&apos;URL.</p>
+              <p>• <strong>Apple Calendar</strong> : Fichier &rarr; Nouvel abonnement à un calendrier &rarr; Collez l&apos;URL.</p>
+            </div>
+
+            {/* Emergency Token Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSyncLoading}
+                  onClick={handleRegenerateToken}
+                  className="text-xs gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+                  title="Invalide immédiatement l'ancien lien et en génère un nouveau"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Régénérer le jeton
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isSyncLoading || !feedUrl}
+                  onClick={handleRevokeToken}
+                  className="text-xs gap-1.5 border-rose-300 text-rose-700 hover:bg-rose-50"
+                  title="Coupe immédiatement toute synchronisation externe pour votre compte"
+                >
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  Révoquer l&apos;accès (Killswitch)
+                </Button>
+              </div>
+
+              <Button
+                type="button"
+                onClick={() => setIsSyncModalOpen(false)}
+                className="text-xs bg-[#1F2A44] text-white"
+              >
+                Fermer
+              </Button>
+            </div>
           </div>
         </div>
       )}

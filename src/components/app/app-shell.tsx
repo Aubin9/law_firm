@@ -305,14 +305,16 @@ export function AppShell({
     await markAllNotificationsReadAction();
     setUnreadCount(0);
     setRealNotifications((prev) =>
-      prev.map((n) => ({ ...n, readAt: new Date().toISOString() }))
+      prev.map((n) => ({ ...n, readAt: new Date().toISOString() })),
     );
   };
 
   const handleMarkOneRead = async (id: string) => {
     await markNotificationReadAction(id);
     setRealNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n))
+      prev.map((n) =>
+        n.id === id ? { ...n, readAt: new Date().toISOString() } : n,
+      ),
     );
     setUnreadCount((c) => Math.max(0, c - 1));
   };
@@ -860,7 +862,9 @@ export function AppShell({
                   <div className="max-h-80 overflow-y-auto divide-y divide-border">
                     {realNotifications.length === 0 ? (
                       <div className="px-4 py-8 text-center text-xs text-muted-foreground">
-                        {locale === "en" ? "No new notifications" : "Aucune notification"}
+                        {locale === "en"
+                          ? "No new notifications"
+                          : "Aucune notification"}
                       </div>
                     ) : (
                       realNotifications.map((item) => {
@@ -878,7 +882,9 @@ export function AppShell({
                               <span className="font-semibold uppercase tracking-wider text-accent">
                                 {item.type}
                               </span>
-                              <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                              <span>
+                                {new Date(item.createdAt).toLocaleDateString()}
+                              </span>
                             </div>
                             <p className="mt-1 text-xs text-foreground">
                               {payload.title || "Notification"}
@@ -1140,7 +1146,9 @@ export function AppShell({
               {isSearching ? (
                 <div className="py-8 text-center text-xs text-muted-foreground">
                   <span className="inline-block animate-spin mr-2">⏳</span>
-                  {locale === "en" ? "Searching across firm records..." : "Recherche dans les dossiers du cabinet..."}
+                  {locale === "en"
+                    ? "Searching across firm records..."
+                    : "Recherche dans les dossiers du cabinet..."}
                 </div>
               ) : searchQuery.trim().length >= 2 ? (
                 searchResults.matters.length === 0 &&
@@ -1191,7 +1199,9 @@ export function AppShell({
                     {searchResults.parties.length > 0 && (
                       <div>
                         <p className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                          {locale === "en" ? "Clients & Parties" : "Clients & Parties"}
+                          {locale === "en"
+                            ? "Clients & Parties"
+                            : "Clients & Parties"}
                         </p>
                         <div className="space-y-1">
                           {searchResults.parties.map((p) => (
@@ -1223,7 +1233,11 @@ export function AppShell({
                           {searchResults.documents.map((d) => (
                             <a
                               key={d.id}
-                              href={buildHref(d.matterId ? `/matters/${d.matterId}?tab=documents` : `/matters`)}
+                              href={buildHref(
+                                d.matterId
+                                  ? `/matters/${d.matterId}?tab=documents`
+                                  : `/matters`,
+                              )}
                               onClick={() => setSearchModalOpen(false)}
                               className="flex items-center justify-between rounded-lg px-2.5 py-2 text-body-sm hover:bg-surface-muted transition-colors"
                             >
@@ -1254,7 +1268,11 @@ export function AppShell({
                           {searchResults.tasks.map((t) => (
                             <a
                               key={t.id}
-                              href={buildHref(t.matterId ? `/matters/${t.matterId}?tab=tasks` : `/matters`)}
+                              href={buildHref(
+                                t.matterId
+                                  ? `/matters/${t.matterId}?tab=tasks`
+                                  : `/matters`,
+                              )}
                               onClick={() => setSearchModalOpen(false)}
                               className="flex items-center justify-between rounded-lg px-2.5 py-2 text-body-sm hover:bg-surface-muted transition-colors"
                             >

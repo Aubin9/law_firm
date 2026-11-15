@@ -36,6 +36,16 @@ const CANONICAL_FLAGS = [
     enabled: false,
     description: "Public client portal exposure (LAN-only by default).",
   },
+  {
+    key: "templates.generation.enabled",
+    enabled: false,
+    description: "Génération documentaire automatique à partir de modèles (INT-05).",
+  },
+  {
+    key: "calendar.sync.enabled",
+    enabled: false,
+    description: "Synchronisation externe du calendrier (iCal / RFC 5545) (INT-03).",
+  },
 ];
 
 /**

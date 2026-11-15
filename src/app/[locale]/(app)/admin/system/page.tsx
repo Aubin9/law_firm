@@ -2,6 +2,7 @@ import { Metadata } from "next";
 import { getServerSession } from "@/server/auth/session";
 import { redirect } from "next/navigation";
 import { getSystemOverview } from "@/server/services/system-service";
+import { getDriveSyncOverview } from "@/server/services/drive-sync-service";
 import { SystemClient } from "./system-client";
 
 export const metadata: Metadata = {
@@ -19,11 +20,15 @@ export default async function SystemPage() {
     redirect("/dashboard");
   }
 
-  const overview = await getSystemOverview(session);
+  const [overview, driveOverview] = await Promise.all([
+    getSystemOverview(session),
+    getDriveSyncOverview(session),
+  ]);
 
   return (
     <SystemClient
       initialOverview={overview}
+      initialDriveOverview={driveOverview}
       currentUserRole={session.user.roleKey}
       currentUserId={session.user.id}
     />

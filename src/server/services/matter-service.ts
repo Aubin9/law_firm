@@ -249,84 +249,92 @@ export async function getMatterById(id: string, session: AppSession) {
           },
         },
       },
-      // Restricted for accountant
-      missions: isAccountant
-        ? false
-        : {
-            include: {
-              owner: {
-                select: { id: true, name: true },
-              },
-              workflowStep: true,
-            },
-            orderBy: { createdAt: "asc" },
+      // Restricted for accountant in returned payload
+      missions: {
+        include: {
+          owner: {
+            select: { id: true, name: true },
           },
-      procedures: isAccountant
-        ? false
-        : {
+          workflowStep: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      procedures: {
+        include: {
+          workflowStep: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
+      tasks: {
+        include: {
+          assignee: { select: { id: true, name: true } },
+          checklist: { orderBy: { position: "asc" } },
+          workflowStep: true,
+        },
+        orderBy: [{ status: "asc" }, { dueAt: "asc" }],
+        take: 20,
+      },
+      notes: {
+        include: {
+          author: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      },
+      documents: {
+        where: { deletedAt: null },
+        include: {
+          category: true,
+          workflowStep: true,
+          versions: {
+            orderBy: { versionNumber: "desc" },
+            take: 1,
             include: {
-              workflowStep: true,
+              uploadedBy: { select: { id: true, name: true } },
+              validatedBy: { select: { id: true, name: true } },
             },
-            orderBy: { createdAt: "asc" },
           },
-      tasks: isAccountant
-        ? false
-        : {
+        },
+        orderBy: { updatedAt: "desc" },
+      },
+      events: {
+        include: {
+          attendees: {
             include: {
-              assignee: { select: { id: true, name: true } },
-              checklist: { orderBy: { position: "asc" } },
-              workflowStep: true,
+              user: { select: { id: true, name: true } },
             },
-            orderBy: [{ status: "asc" }, { dueAt: "asc" }],
-            take: 20,
           },
-      notes: isAccountant
-        ? false
-        : {
-            include: {
-              author: { select: { id: true, name: true } },
-            },
-            orderBy: { createdAt: "desc" },
+          deadlineValidatedBy: {
+            select: { id: true, name: true },
           },
-      documents: isAccountant
-        ? false
-        : {
-            where: { deletedAt: null },
-            include: {
-              category: true,
-              workflowStep: true,
-              versions: {
-                orderBy: { versionNumber: "desc" },
-                take: 1,
-                include: {
-                  uploadedBy: { select: { id: true, name: true } },
-                  validatedBy: { select: { id: true, name: true } },
-                },
-              },
-            },
-            orderBy: { updatedAt: "desc" },
+          replacesEvent: {
+            select: { id: true, title: true, startsAt: true, status: true },
           },
-      events: isAccountant
-        ? false
-        : {
-            include: {
-              attendees: {
-                include: {
-                  user: { select: { id: true, name: true } },
-                },
-              },
-              deadlineValidatedBy: {
-                select: { id: true, name: true },
-              },
-              replacesEvent: {
-                select: { id: true, title: true, startsAt: true, status: true },
-              },
-              replacedBy: {
-                select: { id: true, title: true, startsAt: true, status: true },
-              },
-            },
-            orderBy: { startsAt: "asc" },
+          replacedBy: {
+            select: { id: true, title: true, startsAt: true, status: true },
           },
+        },
+        orderBy: { startsAt: "asc" },
+      },
+      destructionHolds: {
+        where: { releasedAt: null },
+        include: {
+          placedBy: { select: { id: true, name: true } },
+        },
+        orderBy: { placedAt: "desc" },
+      },
+      communications: {
+        include: {
+          author: { select: { id: true, name: true } },
+          document: { select: { id: true, title: true } },
+        },
+        orderBy: { occurredAt: "desc" },
+      },
+      closureRequestedBy: {
+        select: { id: true, name: true, email: true },
+      },
+      closureApprovedBy: {
+        select: { id: true, name: true, email: true },
+      },
       _count: {
         select: {
           tasks: true,
@@ -348,12 +356,14 @@ export async function getMatterById(id: string, session: AppSession) {
 
   return {
     ...matter,
-    missions: matter.missions || [],
-    procedures: matter.procedures || [],
-    tasks: matter.tasks || [],
-    notes: matter.notes || [],
-    documents: matter.documents || [],
-    events: matter.events || [],
+    missions: isAccountant ? [] : (matter.missions || []),
+    procedures: isAccountant ? [] : (matter.procedures || []),
+    tasks: isAccountant ? [] : (matter.tasks || []),
+    notes: isAccountant ? [] : (matter.notes || []),
+    documents: isAccountant ? [] : (matter.documents || []),
+    events: isAccountant ? [] : (matter.events || []),
+    communications: isAccountant ? [] : (matter.communications || []),
+    destructionHolds: isAccountant ? [] : (matter.destructionHolds || []),
     currentUserAccessLevel: level,
     isLeadLawyer: isLead,
   };

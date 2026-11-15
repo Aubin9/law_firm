@@ -121,6 +121,11 @@ export async function assertMatterAccess(
       resolutionReason = "ACCOUNTANT_HEADER_AND_FINANCE";
     }
   }
+  // 5b. User is secretary recording payments on non-STRICT matter (PERMISSIONS.md Row 5)
+  else if (roleKey === "SECRETARY" && resourceType === "finance") {
+    effectiveLevel = "VIEW";
+    resolutionReason = "SECRETARY_FINANCE_ACCESS";
+  }
   // 6. User is technical admin -> Allowed ONLY if an active approved AdminAccessGrant exists
   else if (roleKey === "TECHNICAL_ADMIN") {
     if (matter.adminGrants.length > 0) {

@@ -262,6 +262,9 @@ describe("Audit, Exceptional Access & System Supervision (STEP 19: AUD, ADM, PER
 
   describe("3. System Supervision & Incidents (SPECIFICATIONS ADM, DESIGN 8.13)", () => {
     it("allows PARTNER and TECHNICAL_ADMIN to view system overview", async () => {
+      // Ensure all canonical flags are reset to default (false)
+      await db.featureFlag.updateMany({ data: { enabled: false } });
+
       const overview = await getSystemOverview(partnerSession);
       expect(overview.health.database.status).toBe("HEALTHY");
       expect(overview.health.compliance.mode).toBe("LAN / VPN Self-Hosted");
