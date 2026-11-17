@@ -35,6 +35,7 @@ import {
 import { runRestoreTestSimulationAction } from "@/server/actions/backup-actions";
 import { toggleReversibilityFlagAction } from "@/server/actions/reversibility-actions";
 import { toggleAiFlagAction } from "@/server/actions/ai-actions";
+import { togglePortalFlagAction } from "@/server/actions/portal-actions";
 import {
   toggleDriveSyncFlagAction,
   grantDriveApprovalAction,
@@ -251,6 +252,28 @@ export function SystemClient({
         }
       } catch (err: any) {
         setErrorMsg(err?.message || "Erreur lors du basculement du drapeau IA.");
+      }
+    });
+  };
+
+  const handleTogglePortalFlag = async (enabled: boolean) => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    startTransition(async () => {
+      try {
+        const res = await togglePortalFlagAction(enabled);
+        if (res.success) {
+          setSuccessMsg(
+            enabled
+              ? "Le Portail Client V4 a été activé (royauté d'authentification isolée)."
+              : "Le Portail Client V4 a été coupé (air-gap étanche rétabli)."
+          );
+          refreshOverview();
+        } else {
+          setErrorMsg(res.error);
+        }
+      } catch (err: any) {
+        setErrorMsg(err?.message || "Erreur lors du basculement du portail client.");
       }
     });
   };
@@ -886,6 +909,87 @@ export function SystemClient({
                 </span>
                 <p className="text-muted-foreground">
                   Remplacement réversible des noms, téléphones, coordonnées bancaires et identités. L&apos;application reste 100% opérationnelle en mode hors-ligne sans dépendance à l&apos;IA.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Step 28: Client Portal V4 Supervision (EXT-01 / PORTAL_DESIGN.md) */}
+      {(() => {
+        const portalFlag = featureFlags.find((f: any) => f.key === "portal.enabled");
+        const isPortalOn = portalFlag?.enabled ?? false;
+
+        return (
+          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/20">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${isPortalOn ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300" : "bg-muted text-muted-foreground"}`}>
+                  <Shield className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-serif font-bold text-navy dark:text-slate-100 text-base">
+                      Portail Client Sécurisé V4 (EXT-01 / Étape 28)
+                    </h3>
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${isPortalOn ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>
+                      {isPortalOn ? "ACTIF" : "DÉSACTIVÉ"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Royaume d&apos;authentification séparé pour clients invités (Argon2id, cookie isolé, allow-list stricte des pièces validées et notes partageables uniquement).
+                  </p>
+                </div>
+              </div>
+
+              {(currentUserRole === "PARTNER" || currentUserRole === "TECHNICAL_ADMIN") && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {isPortalOn ? (
+                    <button
+                      onClick={() => handleTogglePortalFlag(false)}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-200 text-slate-800 hover:bg-slate-300 transition"
+                    >
+                      Couper le portail (Off switch)
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleTogglePortalFlag(true)}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition"
+                    >
+                      <Shield className="h-3.5 w-3.5" />
+                      Activer le portail client
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div className="p-3.5 rounded-lg border border-border bg-background space-y-1">
+                <span className="font-semibold text-foreground uppercase tracking-wider text-[11px] block">
+                  Isolation &amp; Anti-IDOR
+                </span>
+                <p className="text-muted-foreground">
+                  Table dédiée `ClientPortalAccount` et contrôle `ClientPortalMatterAccess` sur chaque requête. Les dossiers STRICT/RESTRICTED sont exclus par défaut.
+                </p>
+              </div>
+              <div className="p-3.5 rounded-lg border border-border bg-background space-y-1">
+                <span className="font-semibold text-foreground uppercase tracking-wider text-[11px] block">
+                  Périmètre Allow-List
+                </span>
+                <p className="text-muted-foreground">
+                  Seules les pièces VALIDATED et saines marquées partagées et les notes `shareable` sont exposées. Dépôts clients placés en quarantaine.
+                </p>
+              </div>
+              <div className="p-3.5 rounded-lg border border-border bg-background space-y-1">
+                <span className="font-semibold text-foreground uppercase tracking-wider text-[11px] block">
+                  Protection &amp; Audit
+                </span>
+                <p className="text-muted-foreground">
+                  Rate limiting sur login, activation, upload (20 Mo max) et téléchargements. Chaque consultation et téléchargement est audité.
                 </p>
               </div>
             </div>

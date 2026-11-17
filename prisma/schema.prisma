@@ -1587,3 +1587,59 @@ model Incident {
   reportedById String
   reportedBy   User             @relation(fields: [reportedById], references: [id])
 }
+
+// ============================================================================
+// V4 CLIENT PORTAL (EXT-01 / docs/PORTAL_DESIGN.md)
+// Isolated authentication realm for external clients; never shares internal User.
+// ============================================================================
+
+model ClientPortalAccount {
+  id              String    @id @default(uuid())
+  partyId         String    @unique
+  party           Party     @relation(fields: [partyId], references: [id])
+  email           String    @unique
+  passwordHash    String?
+  status          String    @default("INVITED") // INVITED | ACTIVE | SUSPENDED | REVOKED
+  inviteTokenHash String?
+  inviteExpiresAt DateTime?
+  failedAttempts  Int       @default(0)
+  lockedUntil     DateTime?
+  lastLoginAt     DateTime?
+  invitedById     String
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sessions       ClientPortalSession[]
+  matterAccesses ClientPortalMatterAccess[]
+
+  @@index([status])
+}
+
+model ClientPortalSession {
+  id        String              @id @default(uuid())
+  accountId String
+  account   ClientPortalAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tokenHash String              @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime            @default(now())
+
+  @@index([accountId])
+}
+
+model ClientPortalMatterAccess {
+  id          String              @id @default(uuid())
+  accountId   String
+  account     ClientPortalAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  matterId    String
+  matter      Matter              @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  grantedById String
+  grantedAt   DateTime            @default(now())
+  revokedAt   DateTime?
+
+  @@unique([accountId, matterId])
+  @@index([matterId])
+}
