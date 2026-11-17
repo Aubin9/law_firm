@@ -580,6 +580,7 @@ model Party {
   invoices       Invoice[]
   fundEntries    ClientFundEntry[]
   clientRequests ClientRequest[]
+  portalAccount  ClientPortalAccount?
 
   @@index([displayName])
   @@index([clientStatus])
@@ -693,6 +694,7 @@ model Matter {
   priority             Priority        @default(NORMAL)
   confidentiality      Confidentiality @default(STANDARD)
   aiEnabled            Boolean         @default(false)
+  portalEnabled        Boolean         @default(false)
   leadLawyerId         String
   leadLawyer           User            @relation("MatterLead", fields: [leadLawyerId], references: [id])
   createdById          String
@@ -734,6 +736,7 @@ model Matter {
   adminGrants         AdminAccessGrant[]
   destructionHolds    DestructionHold[]
   destructionRequests DestructionRequest[]
+  portalAccesses      ClientPortalMatterAccess[]
 
   @@index([status])
   @@index([leadLawyerId])
@@ -841,6 +844,7 @@ model Event {
   deadlineValidatedById String?
   deadlineValidatedBy   User?       @relation("DeadlineValidator", fields: [deadlineValidatedById], references: [id])
   deadlineValidatedAt   DateTime?
+  sharedWithClient      Boolean     @default(false)
   createdById           String
   createdBy             User        @relation("EventCreator", fields: [createdById], references: [id])
   createdAt             DateTime    @default(now())
@@ -1020,8 +1024,11 @@ model Document {
   categoryId      String?
   category        DocumentCategory? @relation(fields: [categoryId], references: [id])
   title           String
-  confidentiality Confidentiality   @default(STANDARD)
-  workflowStepId  String?
+  confidentiality  Confidentiality   @default(STANDARD)
+  sharedWithClient Boolean           @default(false)
+  sharedAt         DateTime?
+  sharedById       String?
+  workflowStepId   String?
   workflowStep    WorkflowStep?     @relation(fields: [workflowStepId], references: [id])
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt

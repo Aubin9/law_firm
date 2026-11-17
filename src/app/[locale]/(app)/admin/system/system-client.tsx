@@ -24,6 +24,8 @@ import {
   Check,
   X,
   Download,
+  Bot,
+  Sparkles,
 } from "lucide-react";
 import {
   getSystemOverviewAction,
@@ -32,6 +34,7 @@ import {
 } from "@/server/actions/system-actions";
 import { runRestoreTestSimulationAction } from "@/server/actions/backup-actions";
 import { toggleReversibilityFlagAction } from "@/server/actions/reversibility-actions";
+import { toggleAiFlagAction } from "@/server/actions/ai-actions";
 import {
   toggleDriveSyncFlagAction,
   grantDriveApprovalAction,
@@ -226,6 +229,28 @@ export function SystemClient({
         }
       } catch (err: any) {
         setErrorMsg(err?.message || "Erreur lors du basculement du drapeau.");
+      }
+    });
+  };
+
+  const handleToggleAiFlag = async (enabled: boolean) => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    startTransition(async () => {
+      try {
+        const res = await toggleAiFlagAction(enabled);
+        if (res.success) {
+          setSuccessMsg(
+            enabled
+              ? "Le module d'intelligence artificielle a été activé globalement (Loi n° 2024/017)."
+              : "Le module d'intelligence artificielle a été coupé (air-gap étanche rétabli)."
+          );
+          refreshOverview();
+        } else {
+          setErrorMsg(res.error);
+        }
+      } catch (err: any) {
+        setErrorMsg(err?.message || "Erreur lors du basculement du drapeau IA.");
       }
     });
   };
@@ -775,6 +800,92 @@ export function SystemClient({
                 </span>
                 <p className="text-muted-foreground">
                   Export restreint aux droits autorisés par dossier. L'export global est réservé aux Associés et journalisé dans la table immuable d'audit.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Step 27: AI Module Supervision & Legal Transfer Governance (AI-01 to AI-07 / BR-18 / REC-25) */}
+      {(() => {
+        const aiFlag = featureFlags.find((f: any) => f.key === "ai.enabled");
+        const isAiEnabled = aiFlag?.enabled ?? false;
+
+        return (
+          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/20">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${isAiEnabled ? "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300" : "bg-muted text-muted-foreground"}`}>
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-serif font-bold text-navy dark:text-slate-100 text-base">
+                      Module d&apos;Assistance IA &amp; Gouvernance Déontologique (Étape 27 / BR-18)
+                    </h3>
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${isAiEnabled ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>
+                      {isAiEnabled ? "ACTIF" : "DÉSACTIVÉ"}
+                    </span>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                      LOI N° 2024/017 / OHADA
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Garde-fous stricts : traitement côté serveur uniquement, minimisation/pseudonymisation préalable, interrupteur souverain par dossier, blocage des dossiers confidentiels STRICT/RESTRICTED, et validation humaine obligatoire par avocat.
+                  </p>
+                </div>
+              </div>
+
+              {(currentUserRole === "PARTNER" || currentUserRole === "TECHNICAL_ADMIN") && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {isAiEnabled ? (
+                    <button
+                      onClick={() => handleToggleAiFlag(false)}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-200 text-slate-800 hover:bg-slate-300 transition"
+                    >
+                      Couper l&apos;IA (Off switch)
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleToggleAiFlag(true)}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Activer le module IA
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div className="p-3.5 rounded-lg border border-border bg-background space-y-1">
+                <span className="font-semibold text-foreground uppercase tracking-wider text-[11px] block">
+                  Revue Juridique &amp; Transfert Externe
+                </span>
+                <p className="text-muted-foreground">
+                  Soumis à l&apos;approbation formelle préalable `ExternalTransferApproval` avec revue de conformité au regard de la Loi n° 2024/017 régissant les communications électroniques.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-lg border border-border bg-background space-y-1">
+                <span className="font-semibold text-foreground uppercase tracking-wider text-[11px] block">
+                  Règle Déontologique BR-18
+                </span>
+                <p className="text-muted-foreground">
+                  L&apos;IA ne décide jamais et ne dépose aucun acte. Toute sortie est une suggestion préliminaire étiquetée que seul l&apos;avocat instrumentaire peut valider et s&apos;approprier.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-lg border border-border bg-background space-y-1">
+                <span className="font-semibold text-foreground uppercase tracking-wider text-[11px] block">
+                  Pseudonymisation &amp; Air-Gap
+                </span>
+                <p className="text-muted-foreground">
+                  Remplacement réversible des noms, téléphones, coordonnées bancaires et identités. L&apos;application reste 100% opérationnelle en mode hors-ligne sans dépendance à l&apos;IA.
                 </p>
               </div>
             </div>

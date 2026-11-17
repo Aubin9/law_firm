@@ -52,6 +52,7 @@ import {
   Unlock,
   Ban,
   Send,
+  X,
 } from "lucide-react";
 import { createCommunicationAction } from "@/server/actions/communication-actions";
 import {
@@ -108,6 +109,13 @@ import {
   getDocumentVisaTrailAction,
 } from "@/server/actions/esignature-actions";
 import {
+  requestAiSuggestionAction,
+  acceptAiSuggestionAction,
+  rejectAiSuggestionAction,
+  listMatterAiSuggestionsAction,
+  toggleMatterAiSwitchAction,
+} from "@/server/actions/ai-actions";
+import {
   createTaskAction,
   updateTaskStatusAction,
   toggleChecklistItemAction,
@@ -123,6 +131,8 @@ import {
   MissionStatus,
   ProcedureKind,
   ProcedureStatus,
+  AiSuggestionKind,
+  AiSuggestionStatus,
 } from "@prisma/client";
 
 interface MatterDetailProps {
@@ -339,6 +349,22 @@ export function MatterDetailClient({
   const [isLoadingVisaTrail, setIsLoadingVisaTrail] = useState(false);
   const [visaError, setVisaError] = useState<string | null>(null);
   const [visaSuccess, setVisaSuccess] = useState<string | null>(null);
+
+  // AI Module state (Step 27 / AI-01 to AI-07 / BR-18 / REC-25)
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
+  const [matterAiEnabled, setMatterAiEnabled] = useState<boolean>(matter.aiEnabled ?? false);
+  const [aiKind, setAiKind] = useState<AiSuggestionKind>("SUMMARY" as any);
+  const [aiDocVersionIds, setAiDocVersionIds] = useState<string[]>([]);
+  const [aiCustomInstructions, setAiCustomInstructions] = useState<string>("");
+  const [aiRawText, setAiRawText] = useState<string>("");
+  const [isAiGenerating, setIsAiGenerating] = useState<boolean>(false);
+  const [currentAiSuggestion, setCurrentAiSuggestion] = useState<any | null>(null);
+  const [matterAiSuggestions, setMatterAiSuggestions] = useState<any[]>([]);
+  const [isLoadingAiSuggestions, setIsLoadingAiSuggestions] = useState<boolean>(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiSuccess, setAiSuccess] = useState<string | null>(null);
+  const [aiRejectReason, setAiRejectReason] = useState<string>("");
+  const [isRejectingAi, setIsRejectingAi] = useState<boolean>(false);
 
   // Task & Note state
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -695,14 +721,14 @@ export function MatterDetailClient({
         const myPendingVisa = visaTrail.find(
           (v) =>
             v.status === "PENDING" &&
-            (v.signatory?.id === currentUser.id || isPartner),
+            (v.signatory?.id === currentUserId || isPartner),
         );
 
         let visaIdToSign = myPendingVisa?.id;
         if (!visaIdToSign) {
           const reqRes = await requestDocumentVisaAction({
             documentVersionId: selectedVersionForVisa.id,
-            signatoryId: currentUser.id,
+            signatoryId: currentUserId,
             role: isPartner ? VisaRole.PARTNER : visaRole,
             comment: visaComment,
             matterId: matter.id,
@@ -736,6 +762,142 @@ export function MatterDetailClient({
         }
       } catch (err: any) {
         setVisaError(err.message || "Erreur lors de la signature");
+      }
+    });
+  };
+
+  const handleOpenAiDrawer = async (preselectDoc?: any, preselectVersion?: any) => {
+    setIsAiAssistantOpen(true);
+    setAiError(null);
+    setAiSuccess(null);
+    setCurrentAiSuggestion(null);
+    if (preselectVersion) {
+      setAiDocVersionIds([preselectVersion.id]);
+    }
+    setIsLoadingAiSuggestions(true);
+    try {
+      const res = await listMatterAiSuggestionsAction(matter.id);
+      if (res.success && res.suggestions) {
+        setMatterAiSuggestions(res.suggestions);
+      }
+    } catch {
+      // Ignored
+    } finally {
+      setIsLoadingAiSuggestions(false);
+    }
+  };
+
+  const handleExecuteAiRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAiError(null);
+    setAiSuccess(null);
+    setIsAiGenerating(true);
+
+    try {
+      const res = await requestAiSuggestionAction({
+        matterId: matter.id,
+        kind: aiKind,
+        documentVersionIds: aiDocVersionIds,
+        customInstructions: aiCustomInstructions,
+        rawText: aiRawText,
+      });
+
+      if (res.success && res.suggestion) {
+        setCurrentAiSuggestion(res.suggestion);
+        setAiSuccess(
+          locale === "fr"
+            ? "Suggestion IA générée avec succès. Soumise à validation juridique (BR-18)."
+            : "AI suggestion generated successfully. Pending lawyer validation (BR-18)."
+        );
+        const listRes = await listMatterAiSuggestionsAction(matter.id);
+        if (listRes.success && listRes.suggestions) {
+          setMatterAiSuggestions(listRes.suggestions);
+        }
+      } else {
+        setAiError(res.error || "Échec de génération de la suggestion IA.");
+      }
+    } catch (err: any) {
+      setAiError(err.message || "Erreur de communication avec l'assistant.");
+    } finally {
+      setIsAiGenerating(false);
+    }
+  };
+
+  const handleAcceptAiSuggestion = async (suggestionId: string) => {
+    setAiError(null);
+    setAiSuccess(null);
+
+    startTransition(async () => {
+      try {
+        const res = await acceptAiSuggestionAction(suggestionId, matter.id);
+        if (res.success) {
+          setAiSuccess(
+            res.createdDocumentId
+              ? (locale === "fr"
+                  ? "Projet d'acte validé et matérialisé dans la GED du dossier en tant que nouvelle version."
+                  : "Draft accepted and saved as a genuine document version in the matter.")
+              : (locale === "fr"
+                  ? "Suggestion IA acceptée et validée au dossier."
+                  : "AI suggestion accepted.")
+          );
+          if (currentAiSuggestion?.id === suggestionId) {
+            setCurrentAiSuggestion({ ...currentAiSuggestion, status: "ACCEPTED" });
+          }
+          const listRes = await listMatterAiSuggestionsAction(matter.id);
+          if (listRes.success && listRes.suggestions) {
+            setMatterAiSuggestions(listRes.suggestions);
+          }
+          router.refresh();
+        } else {
+          setAiError(res.error || "Impossible de valider la suggestion.");
+        }
+      } catch (err: any) {
+        setAiError(err.message || "Erreur lors de la validation.");
+      }
+    });
+  };
+
+  const handleRejectAiSuggestion = async (suggestionId: string) => {
+    setAiError(null);
+    setAiSuccess(null);
+
+    startTransition(async () => {
+      try {
+        const res = await rejectAiSuggestionAction(suggestionId, matter.id, aiRejectReason);
+        if (res.success) {
+          setAiSuccess(locale === "fr" ? "Suggestion IA rejetée." : "AI suggestion rejected.");
+          setIsRejectingAi(false);
+          setAiRejectReason("");
+          if (currentAiSuggestion?.id === suggestionId) {
+            setCurrentAiSuggestion({ ...currentAiSuggestion, status: "REJECTED" });
+          }
+          const listRes = await listMatterAiSuggestionsAction(matter.id);
+          if (listRes.success && listRes.suggestions) {
+            setMatterAiSuggestions(listRes.suggestions);
+          }
+          router.refresh();
+        } else {
+          setAiError(res.error || "Impossible de rejeter la suggestion.");
+        }
+      } catch (err: any) {
+        setAiError(err.message || "Erreur lors du rejet.");
+      }
+    });
+  };
+
+  const handleToggleMatterAiSwitch = async (enabled: boolean) => {
+    setAiError(null);
+    startTransition(async () => {
+      try {
+        const res = await toggleMatterAiSwitchAction(matter.id, enabled);
+        if (res.success) {
+          setMatterAiEnabled(enabled);
+          router.refresh();
+        } else {
+          alert(res.error || "Impossible de modifier l'interrupteur IA du dossier.");
+        }
+      } catch (err: any) {
+        alert(err.message || "Erreur");
       }
     });
   };
@@ -1621,6 +1783,42 @@ export function MatterDetailClient({
                 </Badge>
               </div>
             </div>
+
+            {/* AI Sovereign Per-Matter Switch (REC-25 / BR-18 / Loi n° 2024/017) */}
+            <div className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <Sparkles className="h-4 w-4 text-purple-600" />
+                  <span>{locale === "fr" ? "Assistance IA déontologique" : "AI Legal Assistance"}</span>
+                </div>
+                <Badge className={matterAiEnabled ? "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-950 dark:text-purple-300" : "bg-muted text-muted-foreground"}>
+                  {matterAiEnabled ? (locale === "fr" ? "Autorisée" : "Enabled") : (locale === "fr" ? "Désactivée" : "Disabled")}
+                </Badge>
+              </div>
+
+              <p className="text-muted-foreground text-[11px]">
+                {locale === "fr"
+                  ? "Interrupteur souverain du dossier (CLAUDE §8) : autorise ou interdit tout traitement de pièces par l'IA externe (OpenAI). Les dossiers STRICT/RESTRICTED restent strictement bloqués."
+                  : "Sovereign matter switch: enables or disables external AI processing for this matter."}
+              </p>
+
+              {(isPartner || isLead) && (
+                <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+                  <span className="text-[11px] text-muted-foreground">
+                    {matterAiEnabled ? (locale === "fr" ? "Interdire pour ce dossier" : "Disable for matter") : (locale === "fr" ? "Autoriser pour ce dossier" : "Enable for matter")}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant={matterAiEnabled ? "outline" : "primary"}
+                    onClick={() => handleToggleMatterAiSwitch(!matterAiEnabled)}
+                    disabled={isPending}
+                    className={`h-7 px-2.5 text-xs ${!matterAiEnabled ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}`}
+                  >
+                    {matterAiEnabled ? (locale === "fr" ? "Désactiver" : "Disable") : (locale === "fr" ? "Activer l'IA" : "Enable AI")}
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2261,6 +2459,16 @@ export function MatterDetailClient({
                 <Button
                   size="sm"
                   variant="outline"
+                  onClick={() => handleOpenAiDrawer()}
+                  className="gap-1.5 text-xs text-purple-700 border-purple-200 hover:bg-purple-50 dark:text-purple-300 dark:border-purple-800 dark:hover:bg-purple-950/40"
+                  title="Assistant d'analyse et de rédaction juridique IA (Loi n° 2024/017 & BR-18)"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+                  {locale === "fr" ? "Assistant IA" : "AI Assistant"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={handleOpenGenerateDocDrawer}
                   className="gap-1.5 text-xs border-gold text-gold hover:bg-gold/10"
                 >
@@ -2383,6 +2591,19 @@ export function MatterDetailClient({
 
                         <td className="px-5 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            {latest && isClean && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenAiDrawer(doc, latest)}
+                                className="h-8 gap-1 text-xs text-purple-700 border-purple-200 hover:bg-purple-50 dark:text-purple-300 dark:border-purple-800"
+                                title="Analyser ce document avec l'assistant IA"
+                              >
+                                <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+                                {locale === "fr" ? "IA" : "AI"}
+                              </Button>
+                            )}
+
                             {latest && isClean && (
                               <Button
                                 size="sm"
@@ -5081,6 +5302,332 @@ export function MatterDetailClient({
               </Button>
             </div>
           </form>
+        </div>
+      </SidePanel>
+
+      {/* AI Legal Assistant Drawer (Step 27 / AI-01 to AI-07 / BR-18 / REC-25) */}
+      <SidePanel
+        open={isAiAssistantOpen}
+        onOpenChange={setIsAiAssistantOpen}
+        title={locale === "fr" ? "Assistant IA & Analyse Juridique (Loi n° 2024/017)" : "AI Legal Assistant"}
+        subtitle={matter.title}
+      >
+        <div className="space-y-5">
+          {aiError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {aiError}
+            </div>
+          )}
+
+          {aiSuccess && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300">
+              {aiSuccess}
+            </div>
+          )}
+
+          {/* Deontological & Legal Notice (BR-18 & Loi n° 2024/017) */}
+          <div className="p-3.5 rounded-lg border border-purple-200 bg-purple-50/70 dark:border-purple-900/60 dark:bg-purple-950/20 text-xs text-muted-foreground space-y-1.5">
+            <div className="flex items-center gap-1.5 font-semibold text-purple-900 dark:text-purple-200">
+              <Sparkles className="h-4 w-4 text-purple-600" />
+              <span>{locale === "fr" ? "Garde-Fous Déontologiques & Règle BR-18" : "Ethical Safeguards & Rule BR-18"}</span>
+            </div>
+            <p>
+              {locale === "fr"
+                ? "L'IA ne décide jamais, ne fixe aucun délai, ne dépose et n'envoie aucun acte. Toute sortie est une suggestion préliminaire étiquetée soumise à la relecture et validation de l'avocat instrumentaire. Les pièces sont préalablement pseudonymisées (Loi n° 2024/017)."
+                : "The AI never decides, never files or sends anything. Every output is a labelled suggestion that a lawyer must validate."}
+            </p>
+          </div>
+
+          {/* Sovereign Switch Warning if Disabled */}
+          {!matterAiEnabled && (
+            <div className="p-3.5 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+              <div className="flex items-center gap-1.5 font-semibold">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <span>{locale === "fr" ? "Assistance IA désactivée sur ce dossier" : "AI assistance disabled on this matter"}</span>
+              </div>
+              <p>
+                {locale === "fr"
+                  ? "Conformément à la règle de souveraineté déontologique, l'accès aux API d'analyse IA est actuellement bloqué pour ce dossier."
+                  : "External AI processing is currently blocked for this matter."}
+              </p>
+              {(isPartner || isLead) && (
+                <Button
+                  size="sm"
+                  onClick={() => handleToggleMatterAiSwitch(true)}
+                  disabled={isPending}
+                  className="bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs"
+                >
+                  <Sparkles className="h-3.5 w-3.5 mr-1" />
+                  {locale === "fr" ? "Activer l'IA pour ce dossier" : "Enable AI for this matter"}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* AI Request Form */}
+          {matterAiEnabled && (
+            <form onSubmit={handleExecuteAiRequest} className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-xs">
+              <div className="font-semibold text-xs text-foreground uppercase tracking-wider">
+                {locale === "fr" ? "Nouvelle sollicitation d'assistance" : "New AI Assistance Request"}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="aiKindSelect">{locale === "fr" ? "Type d'analyse / Mission IA" : "Analysis Type"}</Label>
+                <select
+                  id="aiKindSelect"
+                  value={aiKind}
+                  onChange={(e) => setAiKind(e.target.value as any)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="SUMMARY">{locale === "fr" ? "Synthèse juridique de l'acte (AI-01)" : "Document Summary (AI-01)"}</option>
+                  <option value="EXTRACTION">{locale === "fr" ? "Extraction des parties, dates, montants & obligations (AI-02)" : "Legal Extraction (AI-02)"}</option>
+                  <option value="COMPARISON">{locale === "fr" ? "Comparaison de deux versions d'actes (AI-03)" : "Version Comparison (AI-03)"}</option>
+                  <option value="DRAFT">{locale === "fr" ? "Projet de rédaction d'acte (AI-04)" : "Draft Assistance (AI-04)"}</option>
+                  <option value="CHRONOLOGY">{locale === "fr" ? "Reconstitution chronologique du dossier (AI-05)" : "Chronology Synthesis (AI-05)"}</option>
+                  <option value="INCONSISTENCY">{locale === "fr" ? "Détection d'incohérences & contradictions (AI-06)" : "Inconsistency Detection (AI-06)"}</option>
+                </select>
+              </div>
+
+              {/* Document selection */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">{locale === "fr" ? "Pièces du dossier à soumettre (optionnel)" : "Attached Documents"}</Label>
+                {(!matter.documents || matter.documents.length === 0) ? (
+                  <p className="text-xs text-muted-foreground italic">
+                    {locale === "fr" ? "Aucun document versé au dossier." : "No documents available."}
+                  </p>
+                ) : (
+                  <div className="max-h-36 overflow-y-auto space-y-1 rounded-md border border-input p-2 bg-background">
+                    {matter.documents.map((doc: any) => {
+                      const latestVersion = doc.versions?.[0];
+                      if (!latestVersion) return null;
+                      const isChecked = aiDocVersionIds.includes(latestVersion.id);
+
+                      return (
+                        <label key={latestVersion.id} className="flex items-center gap-2 text-xs text-foreground cursor-pointer hover:bg-muted/30 p-1 rounded">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setAiDocVersionIds([...aiDocVersionIds, latestVersion.id]);
+                              } else {
+                                setAiDocVersionIds(aiDocVersionIds.filter((id) => id !== latestVersion.id));
+                              }
+                            }}
+                            className="h-3.5 w-3.5 rounded border-input text-purple-600 focus:ring-purple-600"
+                          />
+                          <span className="truncate flex-1">{doc.title} (v{latestVersion.versionNumber})</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="aiInstructions">{locale === "fr" ? "Instructions complémentaires de l'avocat" : "Lawyer Instructions"}</Label>
+                <textarea
+                  id="aiInstructions"
+                  rows={2}
+                  value={aiCustomInstructions}
+                  onChange={(e) => setAiCustomInstructions(e.target.value)}
+                  placeholder="ex: Porter une attention particulière à la prescription de l'action selon l'AUDCG..."
+                  className="w-full rounded-md border border-input bg-background p-2.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <Button
+                  type="submit"
+                  disabled={isAiGenerating}
+                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs gap-1.5"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {isAiGenerating
+                    ? (locale === "fr" ? "Analyse en cours (pseudonymisation)..." : "Processing...")
+                    : (locale === "fr" ? "Générer la suggestion IA" : "Generate Suggestion")}
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {/* Current Suggestion Display with BR-18 Chip */}
+          {currentAiSuggestion && (
+            <div className="space-y-3 rounded-xl border border-purple-300/80 bg-purple-50/30 dark:bg-purple-950/10 p-4 text-xs shadow-sm">
+              <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 text-[10px] font-bold uppercase tracking-wider">
+                    {locale === "fr" ? "Suggestion IA — À valider par l'avocat" : "AI Suggestion — To Validate"}
+                  </Badge>
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    Modèle: {currentAiSuggestion.model} (v{currentAiSuggestion.promptVersion})
+                  </span>
+                </div>
+                <Badge
+                  className={
+                    currentAiSuggestion.status === "ACCEPTED"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : currentAiSuggestion.status === "REJECTED"
+                      ? "bg-rose-100 text-rose-800"
+                      : "bg-purple-100 text-purple-800"
+                  }
+                >
+                  {currentAiSuggestion.status}
+                </Badge>
+              </div>
+
+              {/* Sources */}
+              {currentAiSuggestion.sources && Array.isArray(currentAiSuggestion.sources) && currentAiSuggestion.sources.length > 0 && (
+                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                  <span className="font-semibold text-foreground">{locale === "fr" ? "Sources exploitées :" : "Sources:"}</span>
+                  {currentAiSuggestion.sources.map((s: any, idx: number) => (
+                    <Badge key={idx} variant="outline" className="text-[10px]">
+                      {s.documentTitle} (v{s.versionNumber})
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {/* Output */}
+              <div className="rounded-lg border border-border bg-card p-3 max-h-72 overflow-y-auto whitespace-pre-line text-xs font-sans text-foreground leading-relaxed">
+                {currentAiSuggestion.output}
+              </div>
+
+              {/* Extraction Facts table if applicable */}
+              {currentAiSuggestion.facts && (
+                <div className="rounded-lg border border-border bg-background p-3 text-xs space-y-2">
+                  <div className="font-semibold text-foreground uppercase tracking-wider text-[10px]">
+                    {locale === "fr" ? "Données et faits juridiques extraits" : "Extracted Facts"}
+                  </div>
+                  <pre className="text-[11px] font-mono overflow-x-auto bg-muted/40 p-2 rounded">
+                    {JSON.stringify(currentAiSuggestion.facts, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* Actions: Accept / Reject */}
+              {currentAiSuggestion.status === "PENDING_REVIEW" && (
+                <div className="pt-2 border-t border-border flex flex-col gap-2">
+                  {!isRejectingAi ? (
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsRejectingAi(true)}
+                        className="text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+                      >
+                        <X className="h-3.5 w-3.5 mr-1" />
+                        {locale === "fr" ? "Rejeter la suggestion" : "Reject"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleAcceptAiSuggestion(currentAiSuggestion.id)}
+                        disabled={isPending}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                      >
+                        <Check className="h-3.5 w-3.5 mr-1" />
+                        {currentAiSuggestion.kind === "DRAFT"
+                          ? (locale === "fr" ? "Valider et créer l'acte en GED (BR-18)" : "Accept & Create Draft in DMS")
+                          : (locale === "fr" ? "Valider la suggestion" : "Accept Suggestion")}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 p-2.5 rounded-lg border border-border bg-background">
+                      <Label htmlFor="aiRejectReasonInput" className="text-xs">
+                        {locale === "fr" ? "Motif du rejet (déontologie / non pertinence) *" : "Rejection Reason *"}
+                      </Label>
+                      <Input
+                        id="aiRejectReasonInput"
+                        value={aiRejectReason}
+                        onChange={(e) => setAiRejectReason(e.target.value)}
+                        placeholder="ex: Analyse erronée au regard de la jurisprudence CCJA..."
+                        className="h-8 text-xs"
+                      />
+                      <div className="flex justify-end gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setIsRejectingAi(false)}
+                          className="h-7 text-xs"
+                        >
+                          {locale === "fr" ? "Annuler" : "Cancel"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleRejectAiSuggestion(currentAiSuggestion.id)}
+                          disabled={isPending || !aiRejectReason.trim()}
+                          className="bg-destructive hover:bg-destructive/90 text-destructive-foreground h-7 text-xs"
+                        >
+                          {locale === "fr" ? "Confirmer le rejet" : "Confirm Rejection"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Historical Suggestions */}
+          <div className="space-y-2 pt-2 border-t border-border">
+            <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+              {locale === "fr" ? "Historique des analyses IA du dossier" : "Matter AI Suggestions History"}
+            </h3>
+
+            {isLoadingAiSuggestions ? (
+              <div className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                <Clock className="h-4 w-4 animate-spin text-purple-600" />
+                <span>{locale === "fr" ? "Chargement de l'historique..." : "Loading history..."}</span>
+              </div>
+            ) : matterAiSuggestions.length === 0 ? (
+              <div className="p-3 text-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                {locale === "fr" ? "Aucune analyse IA enregistrée pour ce dossier." : "No AI suggestions recorded for this matter."}
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-56 overflow-y-auto">
+                {matterAiSuggestions.map((s: any) => (
+                  <div
+                    key={s.id}
+                    onClick={() => {
+                      setCurrentAiSuggestion(s);
+                      setIsRejectingAi(false);
+                    }}
+                    className="p-2.5 rounded-lg border border-border bg-card hover:bg-muted/40 cursor-pointer transition text-xs space-y-1"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-foreground">
+                        {s.kind} • {new Date(s.createdAt).toLocaleDateString(locale === "en" ? "en-US" : "fr-FR")}
+                      </span>
+                      <Badge
+                        className={
+                          s.status === "ACCEPTED"
+                            ? "bg-emerald-100 text-emerald-800 text-[10px]"
+                            : s.status === "REJECTED"
+                            ? "bg-rose-100 text-rose-800 text-[10px]"
+                            : "bg-amber-100 text-amber-800 text-[10px]"
+                        }
+                      >
+                        {s.status}
+                      </Badge>
+                    </div>
+                    <p className="text-muted-foreground text-[11px] truncate">
+                      {s.output.slice(0, 80)}...
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="pt-2 flex justify-end border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAiAssistantOpen(false)}
+            >
+              {locale === "fr" ? "Fermer" : "Close"}
+            </Button>
+          </div>
         </div>
       </SidePanel>
 
