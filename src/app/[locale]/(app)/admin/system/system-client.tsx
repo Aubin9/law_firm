@@ -23,6 +23,7 @@ import {
   Play,
   Check,
   X,
+  Download,
 } from "lucide-react";
 import {
   getSystemOverviewAction,
@@ -30,6 +31,7 @@ import {
   resolveIncidentAction,
 } from "@/server/actions/system-actions";
 import { runRestoreTestSimulationAction } from "@/server/actions/backup-actions";
+import { toggleReversibilityFlagAction } from "@/server/actions/reversibility-actions";
 import {
   toggleDriveSyncFlagAction,
   grantDriveApprovalAction,
@@ -204,6 +206,28 @@ export function SystemClient({
     } finally {
       setIsTestingDriveRestore(false);
     }
+  };
+
+  const handleToggleReversibilityFlag = async (enabled: boolean) => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    startTransition(async () => {
+      try {
+        const res = await toggleReversibilityFlagAction(enabled);
+        if (res.success) {
+          setSuccessMsg(
+            enabled
+              ? "L'export de réversibilité a été activé conformément à la Loi n° 2024/017."
+              : "L'export de réversibilité a été coupé (air-gap étanche rétabli)."
+          );
+          refreshOverview();
+        } else {
+          setErrorMsg(res.error);
+        }
+      } catch (err: any) {
+        setErrorMsg(err?.message || "Erreur lors du basculement du drapeau.");
+      }
+    });
   };
 
   const handleReportIncident = async (e: React.FormEvent) => {
@@ -661,6 +685,102 @@ export function SystemClient({
           )}
         </div>
       </div>
+
+      {/* Step 26: Reversibility & Advanced Export Integration (INT-07 / NF-12) */}
+      {(() => {
+        const revFlag = featureFlags.find((f: any) => f.key === "reversibility.export.enabled");
+        const isRevEnabled = revFlag?.enabled ?? false;
+
+        return (
+          <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/20">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${isRevEnabled ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "bg-muted text-muted-foreground"}`}>
+                  <Download className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-serif font-bold text-navy dark:text-slate-100 text-base">
+                      Export de Réversibilité & Continuité Juridique (INT-07 / NF-12)
+                    </h3>
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${isRevEnabled ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>
+                      {isRevEnabled ? "ACTIF" : "DÉSACTIVÉ"}
+                    </span>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                      LOI N° 2024/017 / OHADA
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Garantie de non-enfermement propriétaire : export complet sous archive PKZIP scellée contenant manifeste SHA-256, synthèses CSV/JSON et l'ensemble des pièces classées de la GED.
+                  </p>
+                </div>
+              </div>
+
+              {(currentUserRole === "PARTNER" || currentUserRole === "TECHNICAL_ADMIN") && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {isRevEnabled ? (
+                    <>
+                      <a
+                        href="/api/admin/reversibility/export"
+                        download
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition shadow-xs"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Télécharger la réversibilité globale (.zip)
+                      </a>
+                      <button
+                        onClick={() => handleToggleReversibilityFlag(false)}
+                        disabled={isPending}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-200 text-slate-800 hover:bg-slate-300 transition"
+                      >
+                        Couper (Off switch)
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handleToggleReversibilityFlag(true)}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Activer la réversibilité
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div className="p-3.5 rounded-lg border border-border bg-background space-y-1">
+                <span className="font-semibold text-foreground uppercase tracking-wider text-[11px] block">
+                  Scellement Cryptographique
+                </span>
+                <p className="text-muted-foreground">
+                  Chaque document exporté fait l'objet d'un calcul d'empreinte SHA-256 consigné dans le manifeste `manifest.json`.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-lg border border-border bg-background space-y-1">
+                <span className="font-semibold text-foreground uppercase tracking-wider text-[11px] block">
+                  Interopérabilité & Formats
+                </span>
+                <p className="text-muted-foreground">
+                  Fichiers structurés CSV pour les dossiers, événements d'audience, communications et décomptes financiers exploitables dans tout tableur.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-lg border border-border bg-background space-y-1">
+                <span className="font-semibold text-foreground uppercase tracking-wider text-[11px] block">
+                  Droit d'accès & Traçabilité (REC-17)
+                </span>
+                <p className="text-muted-foreground">
+                  Export restreint aux droits autorisés par dossier. L'export global est réservé aux Associés et journalisé dans la table immuable d'audit.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Backups Register */}
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">

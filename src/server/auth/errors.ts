@@ -35,3 +35,15 @@ export class NotFoundError extends Error {
   }
 }
 
+export class ValidationError extends Error {
+  public readonly code = "VALIDATION_ERROR";
+  public readonly details?: Record<string, any>;
+
+  constructor(message: string, details?: Record<string, any>) {
+    super(message);
+    this.name = "ValidationError";
+    this.details = details;
+    Object.setPrototypeOf(this, ValidationError.prototype);
+  }
+}
+

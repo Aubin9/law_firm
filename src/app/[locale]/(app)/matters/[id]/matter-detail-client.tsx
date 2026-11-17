@@ -53,9 +53,7 @@ import {
   Ban,
   Send,
 } from "lucide-react";
-import {
-  createCommunicationAction,
-} from "@/server/actions/communication-actions";
+import { createCommunicationAction } from "@/server/actions/communication-actions";
 import {
   getMatterClosureReadinessAction,
   requestMatterClosureAction,
@@ -72,7 +70,13 @@ import {
   postponeEventAction,
   validateProceduralDeadlineAction,
 } from "@/server/actions/event-actions";
-import { EventStatus, EventType } from "@prisma/client";
+import {
+  EventStatus,
+  EventType,
+  CommunicationDirection,
+  VisaRole,
+  VisaStatus,
+} from "@prisma/client";
 import {
   updateMatterAction,
   softDeleteMatterAction,
@@ -93,6 +97,16 @@ import {
   getTemplatePreviewAction,
   generateDocumentFromTemplateAction,
 } from "@/server/actions/document-generation-actions";
+import {
+  importEmailToMatterAction,
+  parseEmailPreviewAction,
+} from "@/server/actions/email-association-actions";
+import {
+  requestDocumentVisaAction,
+  signDocumentVisaAction,
+  rejectDocumentVisaAction,
+  getDocumentVisaTrailAction,
+} from "@/server/actions/esignature-actions";
 import {
   createTaskAction,
   updateTaskStatusAction,
@@ -134,11 +148,22 @@ export function MatterDetailClient({
   const isPartner = currentUserRole === "PARTNER";
   const isLead = matter.isLeadLawyer;
   const canManageMembers = matter.currentUserAccessLevel === "MANAGE";
-  const canEdit = matter.currentUserAccessLevel === "EDIT" || matter.currentUserAccessLevel === "MANAGE";
+  const canEdit =
+    matter.currentUserAccessLevel === "EDIT" ||
+    matter.currentUserAccessLevel === "MANAGE";
 
   // Tab state
   const [activeTab, setActiveTab] = useState<
-    "overview" | "missions" | "documents" | "tasks" | "calendar" | "communications" | "closure" | "access" | "timeline" | "audit"
+    | "overview"
+    | "missions"
+    | "documents"
+    | "tasks"
+    | "calendar"
+    | "communications"
+    | "closure"
+    | "access"
+    | "timeline"
+    | "audit"
   >("overview");
   const [matterLogs, setMatterLogs] = useState<any[]>([]);
   const [isLogsLoaded, setIsLogsLoaded] = useState(false);
@@ -158,9 +183,12 @@ export function MatterDetailClient({
   const [closureReadiness, setClosureReadiness] = useState<any | null>(null);
   const [isLoadingReadiness, setIsLoadingReadiness] = useState(false);
   const [closureReasonInput, setClosureReasonInput] = useState("");
-  const [closureArchiveImmediately, setClosureArchiveImmediately] = useState(false);
+  const [closureArchiveImmediately, setClosureArchiveImmediately] =
+    useState(false);
   const [reopenJustificationInput, setReopenJustificationInput] = useState("");
-  const [closureActionError, setClosureActionError] = useState<string | null>(null);
+  const [closureActionError, setClosureActionError] = useState<string | null>(
+    null,
+  );
 
   // Legal Hold state (BR-15)
   const [isAddHoldOpen, setIsAddHoldOpen] = useState(false);
@@ -175,7 +203,9 @@ export function MatterDetailClient({
       if (res.success && res.report) {
         setClosureReadiness(res.report);
       } else {
-        setClosureActionError(res.error || "Erreur de chargement de conformité");
+        setClosureActionError(
+          res.error || "Erreur de chargement de conformité",
+        );
       }
     } catch (err: any) {
       setClosureActionError(err.message || "Erreur réseau");
@@ -208,7 +238,10 @@ export function MatterDetailClient({
     if (isLoadingLogs) return;
     setIsLoadingLogs(true);
     try {
-      const res = await listAuditLogsAction({ matterId: matter.id, pageSize: 50 });
+      const res = await listAuditLogsAction({
+        matterId: matter.id,
+        pageSize: 50,
+      });
       setMatterLogs(res.items || []);
       setIsLogsLoaded(true);
     } catch {
@@ -230,12 +263,15 @@ export function MatterDetailClient({
   const [missionType, setMissionType] = useState<MissionType>("ADVISORY");
   const [missionScope, setMissionScope] = useState("");
   const [missionDeliverables, setMissionDeliverables] = useState("");
-  const [missionOwnerId, setMissionOwnerId] = useState(matter.leadLawyerId || allUsers[0]?.id || "");
+  const [missionOwnerId, setMissionOwnerId] = useState(
+    matter.leadLawyerId || allUsers[0]?.id || "",
+  );
   const [missionError, setMissionError] = useState<string | null>(null);
 
   // Procedure drawer state
   const [isAddProcedureOpen, setIsAddProcedureOpen] = useState(false);
-  const [procedureKind, setProcedureKind] = useState<ProcedureKind>("FIRST_INSTANCE");
+  const [procedureKind, setProcedureKind] =
+    useState<ProcedureKind>("FIRST_INSTANCE");
   const [procedureJurisdiction, setProcedureJurisdiction] = useState("");
   const [procedureReference, setProcedureReference] = useState("");
   const [parentProcedureId, setParentProcedureId] = useState<string>("");
@@ -245,8 +281,11 @@ export function MatterDetailClient({
   // Document drawer state
   const [isUploadDocOpen, setIsUploadDocOpen] = useState(false);
   const [docTitle, setDocTitle] = useState("");
-  const [docCategoryId, setDocCategoryId] = useState(docCategories[0]?.id || "");
-  const [docConfidentiality, setDocConfidentiality] = useState<Confidentiality>("STANDARD");
+  const [docCategoryId, setDocCategoryId] = useState(
+    docCategories[0]?.id || "",
+  );
+  const [docConfidentiality, setDocConfidentiality] =
+    useState<Confidentiality>("STANDARD");
   const [docComment, setDocComment] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
@@ -255,14 +294,51 @@ export function MatterDetailClient({
   const [isGenerateDocOpen, setIsGenerateDocOpen] = useState(false);
   const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const [templateCustomVars, setTemplateCustomVars] = useState<Record<string, any>>({});
+  const [templateCustomVars, setTemplateCustomVars] = useState<
+    Record<string, any>
+  >({});
   const [renderedPreview, setRenderedPreview] = useState<string>("");
   const [missingPreviewVars, setMissingPreviewVars] = useState<string[]>([]);
   const [genDocTitle, setGenDocTitle] = useState<string>("");
-  const [genDocCategoryId, setGenDocCategoryId] = useState<string>(docCategories[0]?.id || "");
+  const [genDocCategoryId, setGenDocCategoryId] = useState<string>(
+    docCategories[0]?.id || "",
+  );
   const [genDocComment, setGenDocComment] = useState<string>("");
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [genDocError, setGenDocError] = useState<string | null>(null);
+
+  // Email association state (INT-04)
+  const [isImportEmailOpen, setIsImportEmailOpen] = useState(false);
+  const [emlFile, setEmlFile] = useState<File | null>(null);
+  const [emlPreview, setEmlPreview] = useState<any | null>(null);
+  const [emlDirection, setEmlDirection] = useState<CommunicationDirection>(
+    "INBOUND" as any,
+  );
+  const [emlPartyId, setEmlPartyId] = useState<string>("");
+  const [emlSaveAttachments, setEmlSaveAttachments] = useState<boolean>(true);
+  const [emlComment, setEmlComment] = useState<string>("");
+  const [isAnalyzingEml, setIsAnalyzingEml] = useState(false);
+  const [emlError, setEmlError] = useState<string | null>(null);
+
+  // Electronic Signature & Visa Circuit state (INT-06 / Loi n° 2024/017)
+  const [isVisaDrawerOpen, setIsVisaDrawerOpen] = useState(false);
+  const [selectedVersionForVisa, setSelectedVersionForVisa] = useState<
+    any | null
+  >(null);
+  const [selectedDocForVisa, setSelectedDocForVisa] = useState<any | null>(
+    null,
+  );
+  const [visaSignatoryId, setVisaSignatoryId] = useState<string>(
+    allUsers[0]?.id || "",
+  );
+  const [visaRole, setVisaRole] = useState<VisaRole>("SIGNATORY" as any);
+  const [visaComment, setVisaComment] = useState<string>(
+    "Lu et approuvé. Bon pour signification.",
+  );
+  const [visaTrail, setVisaTrail] = useState<any[]>([]);
+  const [isLoadingVisaTrail, setIsLoadingVisaTrail] = useState(false);
+  const [visaError, setVisaError] = useState<string | null>(null);
+  const [visaSuccess, setVisaSuccess] = useState<string | null>(null);
 
   // Task & Note state
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -291,15 +367,21 @@ export function MatterDetailClient({
 
   // Postpone modal state
   const [isPostponeModalOpen, setIsPostponeModalOpen] = useState(false);
-  const [selectedEventToPostpone, setSelectedEventToPostpone] = useState<any | null>(null);
+  const [selectedEventToPostpone, setSelectedEventToPostpone] = useState<
+    any | null
+  >(null);
   const [postponeNewDate, setPostponeNewDate] = useState("");
   const [postponeReason, setPostponeReason] = useState("");
   const [postponeLocation, setPostponeLocation] = useState("");
   const [postponeError, setPostponeError] = useState<string | null>(null);
 
   // Expandable list items state
-  const [expandedMissions, setExpandedMissions] = useState<Record<string, boolean>>({});
-  const [expandedProcedures, setExpandedProcedures] = useState<Record<string, boolean>>({});
+  const [expandedMissions, setExpandedMissions] = useState<
+    Record<string, boolean>
+  >({});
+  const [expandedProcedures, setExpandedProcedures] = useState<
+    Record<string, boolean>
+  >({});
 
   // Archive modal
   const [isArchiveConfirmOpen, setIsArchiveConfirmOpen] = useState(false);
@@ -447,7 +529,10 @@ export function MatterDetailClient({
     }
   };
 
-  const handleSelectTemplate = async (templateId: string, templatesList = availableTemplates) => {
+  const handleSelectTemplate = async (
+    templateId: string,
+    templatesList = availableTemplates,
+  ) => {
     setSelectedTemplateId(templateId);
     const tpl = templatesList.find((t) => t.id === templateId);
     if (!tpl) return;
@@ -464,11 +549,18 @@ export function MatterDetailClient({
     await loadPreview(templateId, initialVars);
   };
 
-  const loadPreview = async (templateId: string, customVars: Record<string, any>) => {
+  const loadPreview = async (
+    templateId: string,
+    customVars: Record<string, any>,
+  ) => {
     setIsLoadingPreview(true);
     setGenDocError(null);
     try {
-      const res = await getTemplatePreviewAction(templateId, matter.id, customVars);
+      const res = await getTemplatePreviewAction(
+        templateId,
+        matter.id,
+        customVars,
+      );
       if (res.success && res.preview) {
         setRenderedPreview(res.preview.rendered);
         setMissingPreviewVars(res.preview.missingVariables);
@@ -518,6 +610,136 @@ export function MatterDetailClient({
     });
   };
 
+  const handleEmlFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEmlFile(file);
+    setEmlError(null);
+    setIsAnalyzingEml(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await parseEmailPreviewAction(fd);
+      if (res.success && res.data) {
+        setEmlPreview(res.data);
+      } else {
+        setEmlError(res.error || "Impossible d'analyser le fichier .eml");
+      }
+    } catch (err: any) {
+      setEmlError(err.message || "Erreur lors de la lecture du fichier");
+    } finally {
+      setIsAnalyzingEml(false);
+    }
+  };
+
+  const handleExecuteImportEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emlFile) return;
+    setEmlError(null);
+
+    startTransition(async () => {
+      try {
+        const fd = new FormData();
+        fd.append("matterId", matter.id);
+        fd.append("file", emlFile);
+        if (emlPartyId) fd.append("partyId", emlPartyId);
+        if (emlDirection) fd.append("direction", emlDirection);
+        fd.append("saveAttachments", emlSaveAttachments ? "true" : "false");
+        if (emlComment) fd.append("comment", emlComment);
+
+        const res = await importEmailToMatterAction(fd);
+        if (res.success) {
+          setIsImportEmailOpen(false);
+          setEmlFile(null);
+          setEmlPreview(null);
+          setEmlComment("");
+          router.refresh();
+        } else {
+          setEmlError(res.error || "Échec de l'association de l'e-mail.");
+        }
+      } catch (err: any) {
+        setEmlError(err.message || "Erreur inconnue");
+      }
+    });
+  };
+
+  const handleOpenVisaDrawer = async (doc: any, version: any) => {
+    setSelectedDocForVisa(doc);
+    setSelectedVersionForVisa(version);
+    setIsVisaDrawerOpen(true);
+    setVisaError(null);
+    setVisaSuccess(null);
+    setIsLoadingVisaTrail(true);
+    try {
+      const res = await getDocumentVisaTrailAction(version.id);
+      if (res.success && res.trail) {
+        setVisaTrail(res.trail);
+      }
+    } catch {
+      // Ignored
+    } finally {
+      setIsLoadingVisaTrail(false);
+    }
+  };
+
+  const handleExecuteSignVisa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedVersionForVisa) return;
+    setVisaError(null);
+    setVisaSuccess(null);
+
+    startTransition(async () => {
+      try {
+        const myPendingVisa = visaTrail.find(
+          (v) =>
+            v.status === "PENDING" &&
+            (v.signatory?.id === currentUser.id || isPartner),
+        );
+
+        let visaIdToSign = myPendingVisa?.id;
+        if (!visaIdToSign) {
+          const reqRes = await requestDocumentVisaAction({
+            documentVersionId: selectedVersionForVisa.id,
+            signatoryId: currentUser.id,
+            role: isPartner ? VisaRole.PARTNER : visaRole,
+            comment: visaComment,
+            matterId: matter.id,
+          });
+          if (!reqRes.success || !reqRes.visa) {
+            setVisaError(reqRes.error || "Impossible d'initier la signature");
+            return;
+          }
+          visaIdToSign = reqRes.visa.id;
+        }
+
+        const signRes = await signDocumentVisaAction({
+          visaId: visaIdToSign,
+          comment: visaComment,
+          matterId: matter.id,
+        });
+
+        if (signRes.success) {
+          setVisaSuccess(
+            "Signature électronique probante apposée avec succès (Loi n° 2024/017).",
+          );
+          const trailRes = await getDocumentVisaTrailAction(
+            selectedVersionForVisa.id,
+          );
+          if (trailRes.success && trailRes.trail) {
+            setVisaTrail(trailRes.trail);
+          }
+          router.refresh();
+        } else {
+          setVisaError(signRes.error || "Échec de signature.");
+        }
+      } catch (err: any) {
+        setVisaError(err.message || "Erreur lors de la signature");
+      }
+    });
+  };
+
   const handleValidateVersion = async (versionId: string) => {
     startTransition(async () => {
       const res = await validateDocumentVersionAction(versionId, matter.id);
@@ -555,7 +777,10 @@ export function MatterDetailClient({
     });
   };
 
-  const handleToggleTaskStatus = async (taskId: string, currentStatus: string) => {
+  const handleToggleTaskStatus = async (
+    taskId: string,
+    currentStatus: string,
+  ) => {
     const nextStatus = currentStatus === "DONE" ? "TODO" : "DONE";
     startTransition(async () => {
       const res = await updateTaskStatusAction(taskId, matter.id, nextStatus);
@@ -604,7 +829,7 @@ export function MatterDetailClient({
       setEventError(
         locale === "fr"
           ? "Une source légale ou judiciaire est obligatoire pour une échéance procédurale."
-          : "A legal or court source is required for a procedural deadline."
+          : "A legal or court source is required for a procedural deadline.",
       );
       return;
     }
@@ -640,7 +865,8 @@ export function MatterDetailClient({
 
   const handlePostponeEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEventToPostpone || !postponeNewDate || !postponeReason.trim()) return;
+    if (!selectedEventToPostpone || !postponeNewDate || !postponeReason.trim())
+      return;
     setPostponeError(null);
 
     startTransition(async () => {
@@ -685,7 +911,9 @@ export function MatterDetailClient({
   const handleCreateCommunication = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commSubject.trim() && !commBody.trim()) {
-      setCommError("L'objet ou le contenu de la communication est obligatoire.");
+      setCommError(
+        "L'objet ou le contenu de la communication est obligatoire.",
+      );
       return;
     }
     setCommError(null);
@@ -701,7 +929,9 @@ export function MatterDetailClient({
       });
 
       if (!res.success) {
-        setCommError(res.error || "Erreur lors de l'enregistrement de la communication");
+        setCommError(
+          res.error || "Erreur lors de l'enregistrement de la communication",
+        );
       } else {
         setIsAddCommOpen(false);
         setCommSubject("");
@@ -721,9 +951,14 @@ export function MatterDetailClient({
     }
     setClosureActionError(null);
     startTransition(async () => {
-      const res = await requestMatterClosureAction(matter.id, closureReasonInput.trim());
+      const res = await requestMatterClosureAction(
+        matter.id,
+        closureReasonInput.trim(),
+      );
       if (!res.success) {
-        setClosureActionError(res.error || "Erreur lors de la demande de clôture");
+        setClosureActionError(
+          res.error || "Erreur lors de la demande de clôture",
+        );
       } else {
         setClosureReasonInput("");
         router.refresh();
@@ -734,9 +969,14 @@ export function MatterDetailClient({
   const handleApproveClosure = async () => {
     setClosureActionError(null);
     startTransition(async () => {
-      const res = await approveMatterClosureAction(matter.id, closureArchiveImmediately);
+      const res = await approveMatterClosureAction(
+        matter.id,
+        closureArchiveImmediately,
+      );
       if (!res.success) {
-        setClosureActionError(res.error || "Erreur lors de l'approbation de clôture");
+        setClosureActionError(
+          res.error || "Erreur lors de l'approbation de clôture",
+        );
       } else {
         router.refresh();
       }
@@ -746,12 +986,17 @@ export function MatterDetailClient({
   const handleReopenMatter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reopenJustificationInput.trim()) {
-      setClosureActionError("Une justification écrite est obligatoire pour réouvrir un dossier.");
+      setClosureActionError(
+        "Une justification écrite est obligatoire pour réouvrir un dossier.",
+      );
       return;
     }
     setClosureActionError(null);
     startTransition(async () => {
-      const res = await reopenMatterAction(matter.id, reopenJustificationInput.trim());
+      const res = await reopenMatterAction(
+        matter.id,
+        reopenJustificationInput.trim(),
+      );
       if (!res.success) {
         setClosureActionError(res.error || "Erreur lors de la réouverture");
       } else {
@@ -764,7 +1009,9 @@ export function MatterDetailClient({
   const handlePlaceHold = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!holdReasonInput.trim()) {
-      setHoldActionError("Le motif légal du gel conservatoire est obligatoire.");
+      setHoldActionError(
+        "Le motif légal du gel conservatoire est obligatoire.",
+      );
       return;
     }
     setHoldActionError(null);
@@ -796,7 +1043,7 @@ export function MatterDetailClient({
   };
 
   const primaryClient = matter.parties?.find(
-    (p: any) => p.party?.clientStatus === "CLIENT" || p.role === "CLIENT"
+    (p: any) => p.party?.clientStatus === "CLIENT" || p.role === "CLIENT",
   )?.party;
 
   return (
@@ -817,7 +1064,9 @@ export function MatterDetailClient({
               </span>
               <span className="text-muted-foreground">•</span>
               <span className="text-xs text-muted-foreground">
-                {locale === "en" ? matter.category?.nameEn : matter.category?.nameFr}
+                {locale === "en"
+                  ? matter.category?.nameEn
+                  : matter.category?.nameFr}
               </span>
             </div>
             <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
@@ -827,6 +1076,20 @@ export function MatterDetailClient({
         </div>
 
         <div className="flex items-center gap-2">
+          <a
+            href={`/api/matters/${matter.id}/export`}
+            download
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-colors shadow-xs"
+            title={
+              locale === "fr"
+                ? "Export complet scellé du dossier (manifeste SHA-256, pièces, CSV) selon NF-12"
+                : "Export sealed matter archive (NF-12)"
+            }
+          >
+            <Download className="h-3.5 w-3.5 text-primary" />
+            {locale === "fr" ? "Exporter (.zip)" : "Export (.zip)"}
+          </a>
+
           {showSelfJoin && (
             <Button
               variant="outline"
@@ -836,7 +1099,9 @@ export function MatterDetailClient({
               className="gap-1.5 border-amber-500/30 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 text-xs"
             >
               <Key className="h-3.5 w-3.5" />
-              {locale === "fr" ? "S'adjoindre (Associé)" : "Self-join (Partner)"}
+              {locale === "fr"
+                ? "S'adjoindre (Associé)"
+                : "Self-join (Partner)"}
             </Button>
           )}
 
@@ -861,9 +1126,15 @@ export function MatterDetailClient({
             <ShieldAlert className="h-5 w-5 text-rose-600 dark:text-rose-400 mt-0.5 shrink-0" />
             <div>
               <div className="text-sm font-bold flex items-center gap-2">
-                {locale === "fr" ? "GEL CONSERVATOIRE ACTIF (Règle BR-15)" : "ACTIVE LEGAL HOLD (Rule BR-15)"}
-                <Badge variant="outline" className="border-rose-500/40 bg-rose-500/20 text-rose-800 dark:text-rose-300 text-[10px]">
-                  {matter.destructionHolds.length} {locale === "fr" ? "mesure(s)" : "hold(s)"}
+                {locale === "fr"
+                  ? "GEL CONSERVATOIRE ACTIF (Règle BR-15)"
+                  : "ACTIVE LEGAL HOLD (Rule BR-15)"}
+                <Badge
+                  variant="outline"
+                  className="border-rose-500/40 bg-rose-500/20 text-rose-800 dark:text-rose-300 text-[10px]"
+                >
+                  {matter.destructionHolds.length}{" "}
+                  {locale === "fr" ? "mesure(s)" : "hold(s)"}
                 </Badge>
               </div>
               <p className="text-xs text-rose-900/80 dark:text-rose-300/80 mt-1">
@@ -895,7 +1166,9 @@ export function MatterDetailClient({
             <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
             <div>
               <div className="text-sm font-bold">
-                {locale === "fr" ? "Dossier Clôturé & Conforme (Règle BR-14)" : "Matter Closed & Compliant (Rule BR-14)"}
+                {locale === "fr"
+                  ? "Dossier Clôturé & Conforme (Règle BR-14)"
+                  : "Matter Closed & Compliant (Rule BR-14)"}
               </div>
               <p className="text-xs text-emerald-900/80 dark:text-emerald-300/80 mt-1">
                 {locale === "fr"
@@ -924,7 +1197,9 @@ export function MatterDetailClient({
             <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
             <div>
               <div className="text-sm font-bold">
-                {locale === "fr" ? "Demande de clôture en attente d'approbation Associé" : "Closure Request Pending Partner Approval"}
+                {locale === "fr"
+                  ? "Demande de clôture en attente d'approbation Associé"
+                  : "Closure Request Pending Partner Approval"}
               </div>
               <p className="text-xs text-amber-900/80 dark:text-amber-300/80 mt-1">
                 {locale === "fr"
@@ -957,7 +1232,9 @@ export function MatterDetailClient({
             </span>
             <div className="mt-1 font-semibold text-foreground flex items-center gap-1.5 text-xs">
               <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="truncate">{primaryClient?.displayName || "—"}</span>
+              <span className="truncate">
+                {primaryClient?.displayName || "—"}
+              </span>
             </div>
           </div>
 
@@ -972,12 +1249,15 @@ export function MatterDetailClient({
           </div>
 
           <div>
-            <span className="text-xs text-muted-foreground block">Statut du dossier</span>
+            <span className="text-xs text-muted-foreground block">
+              Statut du dossier
+            </span>
             <div className="mt-1">
               <StatusChip
                 label={
-                  (locale === "en" ? matter.workflowStep?.nameEn : matter.workflowStep?.nameFr) ||
-                  matter.status
+                  (locale === "en"
+                    ? matter.workflowStep?.nameEn
+                    : matter.workflowStep?.nameFr) || matter.status
                 }
                 tone="primary"
               />
@@ -985,14 +1265,18 @@ export function MatterDetailClient({
           </div>
 
           <div>
-            <span className="text-xs text-muted-foreground block">Priorité</span>
+            <span className="text-xs text-muted-foreground block">
+              Priorité
+            </span>
             <div className="mt-1">
               <PriorityChip priority={matter.priority} />
             </div>
           </div>
 
           <div>
-            <span className="text-xs text-muted-foreground block">Confidentialité</span>
+            <span className="text-xs text-muted-foreground block">
+              Confidentialité
+            </span>
             <div className="mt-1">
               <ConfidentialityChip level={matter.confidentiality} />
             </div>
@@ -1003,7 +1287,10 @@ export function MatterDetailClient({
               {locale === "fr" ? "Habilitation" : "Your Access"}
             </span>
             <div className="mt-1">
-              <Badge variant="outline" className="text-xs font-bold text-primary">
+              <Badge
+                variant="outline"
+                className="text-xs font-bold text-primary"
+              >
                 {matter.currentUserAccessLevel}
               </Badge>
             </div>
@@ -1034,9 +1321,12 @@ export function MatterDetailClient({
             }`}
           >
             <Scale className="h-3.5 w-3.5" />
-            {locale === "fr" ? "Missions & Procédures" : "Missions & Procedures"}
+            {locale === "fr"
+              ? "Missions & Procédures"
+              : "Missions & Procedures"}
             <span className="ml-1 rounded-full bg-surface-muted px-1.5 py-0.5 text-[10px] font-bold text-foreground">
-              {(matter.missions?.length || 0) + (matter.procedures?.length || 0)}
+              {(matter.missions?.length || 0) +
+                (matter.procedures?.length || 0)}
             </span>
           </button>
 
@@ -1180,19 +1470,29 @@ export function MatterDetailClient({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-surface-muted/50 text-muted-foreground border-b border-border font-medium">
                     <tr>
-                      <th className="px-4 py-2.5">{locale === "fr" ? "Rôle" : "Role"}</th>
-                      <th className="px-4 py-2.5">{locale === "fr" ? "Partie" : "Party"}</th>
-                      <th className="px-4 py-2.5">{locale === "fr" ? "Type" : "Type"}</th>
+                      <th className="px-4 py-2.5">
+                        {locale === "fr" ? "Rôle" : "Role"}
+                      </th>
+                      <th className="px-4 py-2.5">
+                        {locale === "fr" ? "Partie" : "Party"}
+                      </th>
+                      <th className="px-4 py-2.5">
+                        {locale === "fr" ? "Type" : "Type"}
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
                     {matter.parties?.map((mp: any) => (
                       <tr key={mp.id} className="hover:bg-surface-muted/30">
-                        <td className="px-4 py-3 font-semibold text-primary">{mp.role}</td>
+                        <td className="px-4 py-3 font-semibold text-primary">
+                          {mp.role}
+                        </td>
                         <td className="px-4 py-3 font-medium text-foreground">
                           {mp.party?.displayName}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{mp.party?.type}</td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {mp.party?.type}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1204,7 +1504,9 @@ export function MatterDetailClient({
             <div className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                  {locale === "fr" ? "Missions & Procédures actives" : "Active Missions & Procedures"}
+                  {locale === "fr"
+                    ? "Missions & Procédures actives"
+                    : "Active Missions & Procedures"}
                 </h2>
                 <button
                   onClick={() => setActiveTab("missions")}
@@ -1217,7 +1519,9 @@ export function MatterDetailClient({
               {(!matter.missions || matter.missions.length === 0) &&
               (!matter.procedures || matter.procedures.length === 0) ? (
                 <p className="text-xs text-muted-foreground">
-                  {locale === "fr" ? "Aucune mission ni procédure enregistrée." : "No missions or procedures recorded."}
+                  {locale === "fr"
+                    ? "Aucune mission ni procédure enregistrée."
+                    : "No missions or procedures recorded."}
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -1230,12 +1534,16 @@ export function MatterDetailClient({
                         <div className="font-semibold text-foreground flex items-center gap-1.5">
                           <Scale className="h-3.5 w-3.5 text-primary" />
                           <span>{m.title}</span>
-                          <Badge variant="outline" className="text-[10px] font-mono">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-mono"
+                          >
                             {m.type}
                           </Badge>
                         </div>
                         <span className="text-[11px] text-muted-foreground">
-                          {locale === "fr" ? "Responsable :" : "Owner :"} {m.owner?.name || "Cabinet"}
+                          {locale === "fr" ? "Responsable :" : "Owner :"}{" "}
+                          {m.owner?.name || "Cabinet"}
                         </span>
                       </div>
                       <Badge className="text-[10px]">{m.status}</Badge>
@@ -1252,7 +1560,9 @@ export function MatterDetailClient({
                           <Gavel className="h-3.5 w-3.5 text-amber-600" />
                           <span>{p.jurisdiction || "Tribunal"}</span>
                           {p.reference && (
-                            <span className="font-mono text-muted-foreground">({p.reference})</span>
+                            <span className="font-mono text-muted-foreground">
+                              ({p.reference})
+                            </span>
                           )}
                           <Badge variant="outline" className="text-[10px]">
                             {p.kind}
@@ -1260,7 +1570,9 @@ export function MatterDetailClient({
                         </div>
                         {p.parentProcedure && (
                           <span className="text-[11px] text-primary block">
-                            ↳ {locale === "fr" ? "Appel de :" : "Appeal of :"} {p.parentProcedure.jurisdiction || p.parentProcedure.kind}
+                            ↳ {locale === "fr" ? "Appel de :" : "Appeal of :"}{" "}
+                            {p.parentProcedure.jurisdiction ||
+                              p.parentProcedure.kind}
                           </span>
                         )}
                       </div>
@@ -1280,22 +1592,31 @@ export function MatterDetailClient({
               </h2>
 
               <div className="flex justify-between py-1.5 border-b border-border/60">
-                <span className="text-muted-foreground">{locale === "fr" ? "Créé le" : "Created on"}</span>
+                <span className="text-muted-foreground">
+                  {locale === "fr" ? "Créé le" : "Created on"}
+                </span>
                 <span className="font-medium text-foreground">
                   {new Date(matter.createdAt).toLocaleDateString()}
                 </span>
               </div>
 
               <div className="flex justify-between py-1.5 border-b border-border/60">
-                <span className="text-muted-foreground">{locale === "fr" ? "Dernière mise à jour" : "Updated"}</span>
+                <span className="text-muted-foreground">
+                  {locale === "fr" ? "Dernière mise à jour" : "Updated"}
+                </span>
                 <span className="font-medium text-foreground">
                   {new Date(matter.updatedAt).toLocaleDateString()}
                 </span>
               </div>
 
               <div className="flex justify-between py-1.5">
-                <span className="text-muted-foreground">{locale === "fr" ? "Niveau effectif" : "Your level"}</span>
-                <Badge variant="outline" className="text-xs font-bold text-primary">
+                <span className="text-muted-foreground">
+                  {locale === "fr" ? "Niveau effectif" : "Your level"}
+                </span>
+                <Badge
+                  variant="outline"
+                  className="text-xs font-bold text-primary"
+                >
                   {matter.currentUserAccessLevel}
                 </Badge>
               </div>
@@ -1341,13 +1662,17 @@ export function MatterDetailClient({
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
                 <Scale className="h-4 w-4 text-primary" />
-                {locale === "fr" ? "Missions de conseil et d'assistance" : "Missions"}
+                {locale === "fr"
+                  ? "Missions de conseil et d'assistance"
+                  : "Missions"}
               </h2>
             </div>
 
-            {(!matter.missions || matter.missions.length === 0) ? (
+            {!matter.missions || matter.missions.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-                {locale === "fr" ? "Aucune mission spécifique créée." : "No missions created."}
+                {locale === "fr"
+                  ? "Aucune mission spécifique créée."
+                  : "No missions created."}
               </div>
             ) : (
               <div className="space-y-2">
@@ -1378,7 +1703,8 @@ export function MatterDetailClient({
                               </Badge>
                             </div>
                             <span className="text-xs text-muted-foreground">
-                              {locale === "fr" ? "Responsable :" : "Owner :"} {mission.owner?.name || "Cabinet"}
+                              {locale === "fr" ? "Responsable :" : "Owner :"}{" "}
+                              {mission.owner?.name || "Cabinet"}
                             </span>
                           </div>
                         </div>
@@ -1388,7 +1714,8 @@ export function MatterDetailClient({
                             label={
                               (locale === "en"
                                 ? mission.workflowStep?.nameEn
-                                : mission.workflowStep?.nameFr) || mission.status
+                                : mission.workflowStep?.nameFr) ||
+                              mission.status
                             }
                             tone="primary"
                           />
@@ -1400,7 +1727,9 @@ export function MatterDetailClient({
                           {mission.scope && (
                             <div>
                               <span className="font-semibold text-foreground block">
-                                {locale === "fr" ? "Périmètre d'intervention :" : "Scope of work :"}
+                                {locale === "fr"
+                                  ? "Périmètre d'intervention :"
+                                  : "Scope of work :"}
                               </span>
                               <p className="mt-0.5 text-muted-foreground whitespace-pre-line">
                                 {mission.scope}
@@ -1411,7 +1740,9 @@ export function MatterDetailClient({
                           {mission.deliverables && (
                             <div>
                               <span className="font-semibold text-foreground block">
-                                {locale === "fr" ? "Livrables attendus :" : "Deliverables :"}
+                                {locale === "fr"
+                                  ? "Livrables attendus :"
+                                  : "Deliverables :"}
                               </span>
                               <p className="mt-0.5 text-muted-foreground whitespace-pre-line">
                                 {mission.deliverables}
@@ -1421,10 +1752,14 @@ export function MatterDetailClient({
 
                           <div className="pt-2 flex justify-between text-[11px] text-muted-foreground border-t border-border/40">
                             <span>
-                              {locale === "fr" ? "Créée le :" : "Created on :"} {new Date(mission.createdAt).toLocaleDateString()}
+                              {locale === "fr" ? "Créée le :" : "Created on :"}{" "}
+                              {new Date(mission.createdAt).toLocaleDateString()}
                             </span>
                             <span>
-                              {locale === "fr" ? "Statut interne :" : "Internal status :"} {mission.status}
+                              {locale === "fr"
+                                ? "Statut interne :"
+                                : "Internal status :"}{" "}
+                              {mission.status}
                             </span>
                           </div>
                         </div>
@@ -1441,13 +1776,17 @@ export function MatterDetailClient({
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
                 <Gavel className="h-4 w-4 text-amber-600" />
-                {locale === "fr" ? "Procédures judiciaires et arbitrales" : "Court & Arbitral Procedures"}
+                {locale === "fr"
+                  ? "Procédures judiciaires et arbitrales"
+                  : "Court & Arbitral Procedures"}
               </h2>
             </div>
 
-            {(!matter.procedures || matter.procedures.length === 0) ? (
+            {!matter.procedures || matter.procedures.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-                {locale === "fr" ? "Aucune procédure judiciaire enregistrée." : "No procedures recorded."}
+                {locale === "fr"
+                  ? "Aucune procédure judiciaire enregistrée."
+                  : "No procedures recorded."}
               </div>
             ) : (
               <div className="space-y-2">
@@ -1473,7 +1812,10 @@ export function MatterDetailClient({
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-foreground text-sm">
-                                {procedure.jurisdiction || (locale === "fr" ? "Juridiction à désigner" : "Court")}
+                                {procedure.jurisdiction ||
+                                  (locale === "fr"
+                                    ? "Juridiction à désigner"
+                                    : "Court")}
                               </span>
                               {procedure.reference && (
                                 <span className="font-mono text-xs text-primary font-semibold">
@@ -1503,7 +1845,8 @@ export function MatterDetailClient({
                             label={
                               (locale === "en"
                                 ? procedure.workflowStep?.nameEn
-                                : procedure.workflowStep?.nameFr) || procedure.status
+                                : procedure.workflowStep?.nameFr) ||
+                              procedure.status
                             }
                             tone="primary"
                           />
@@ -1515,7 +1858,9 @@ export function MatterDetailClient({
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <span className="text-muted-foreground block">
-                                {locale === "fr" ? "Juridiction saisie :" : "Court / Authority :"}
+                                {locale === "fr"
+                                  ? "Juridiction saisie :"
+                                  : "Court / Authority :"}
                               </span>
                               <span className="font-semibold text-foreground">
                                 {procedure.jurisdiction || "—"}
@@ -1524,7 +1869,9 @@ export function MatterDetailClient({
 
                             <div>
                               <span className="text-muted-foreground block">
-                                {locale === "fr" ? "N° de rôle général / Réf. greffe :" : "Case Docket Reference :"}
+                                {locale === "fr"
+                                  ? "N° de rôle général / Réf. greffe :"
+                                  : "Case Docket Reference :"}
                               </span>
                               <span className="font-semibold font-mono text-foreground">
                                 {procedure.reference || "—"}
@@ -1535,7 +1882,9 @@ export function MatterDetailClient({
                           {procedure.childProcedures?.length > 0 && (
                             <div className="pt-2 border-t border-border/40">
                               <span className="font-semibold text-foreground block mb-1">
-                                {locale === "fr" ? "Voies de recours enclenchées :" : "Child Procedures (Appeals) :"}
+                                {locale === "fr"
+                                  ? "Voies de recours enclenchées :"
+                                  : "Child Procedures (Appeals) :"}
                               </span>
                               <div className="space-y-1">
                                 {procedure.childProcedures.map((cp: any) => (
@@ -1544,9 +1893,12 @@ export function MatterDetailClient({
                                     className="flex items-center justify-between bg-surface-muted/50 p-2 rounded text-[11px]"
                                   >
                                     <span>
-                                      {cp.kind} - {cp.jurisdiction} ({cp.reference || "Sans réf"})
+                                      {cp.kind} - {cp.jurisdiction} (
+                                      {cp.reference || "Sans réf"})
                                     </span>
-                                    <Badge className="text-[10px]">{cp.status}</Badge>
+                                    <Badge className="text-[10px]">
+                                      {cp.status}
+                                    </Badge>
                                   </div>
                                 ))}
                               </div>
@@ -1569,7 +1921,9 @@ export function MatterDetailClient({
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-foreground">
-                {locale === "fr" ? "Équipe et habilitations d'accès" : "Team & access permissions"}
+                {locale === "fr"
+                  ? "Équipe et habilitations d'accès"
+                  : "Team & access permissions"}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {locale === "fr"
@@ -1594,17 +1948,28 @@ export function MatterDetailClient({
             <table className="w-full text-left text-sm">
               <thead className="border-b border-border bg-surface-muted text-xs font-semibold text-muted-foreground uppercase">
                 <tr>
-                  <th className="px-5 py-3">{locale === "fr" ? "Collaborateur" : "User"}</th>
-                  <th className="px-5 py-3">{locale === "fr" ? "Rôle cabinet" : "Firm role"}</th>
-                  <th className="px-5 py-3">{locale === "fr" ? "Niveau d'accès" : "Access level"}</th>
-                  <th className="px-5 py-3 text-right">{locale === "fr" ? "Action" : "Action"}</th>
+                  <th className="px-5 py-3">
+                    {locale === "fr" ? "Collaborateur" : "User"}
+                  </th>
+                  <th className="px-5 py-3">
+                    {locale === "fr" ? "Rôle cabinet" : "Firm role"}
+                  </th>
+                  <th className="px-5 py-3">
+                    {locale === "fr" ? "Niveau d'accès" : "Access level"}
+                  </th>
+                  <th className="px-5 py-3 text-right">
+                    {locale === "fr" ? "Action" : "Action"}
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {matter.members.map((m: any) => {
                   const isLeadLawyer = m.userId === matter.leadLawyerId;
                   return (
-                    <tr key={m.userId} className="hover:bg-surface-muted/50 transition-colors">
+                    <tr
+                      key={m.userId}
+                      className="hover:bg-surface-muted/50 transition-colors"
+                    >
                       <td className="px-5 py-4">
                         <div className="font-semibold text-foreground flex items-center gap-1.5">
                           {m.user.name}
@@ -1614,11 +1979,15 @@ export function MatterDetailClient({
                             </Badge>
                           )}
                         </div>
-                        <div className="text-xs text-muted-foreground">{m.user.email}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {m.user.email}
+                        </div>
                       </td>
 
                       <td className="px-5 py-4 text-xs text-muted-foreground">
-                        {locale === "en" ? m.user.role?.nameEn : m.user.role?.nameFr}
+                        {locale === "en"
+                          ? m.user.role?.nameEn
+                          : m.user.role?.nameFr}
                       </td>
 
                       <td className="px-5 py-4">
@@ -1660,7 +2029,9 @@ export function MatterDetailClient({
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-foreground">
-                  {locale === "fr" ? "Tâches et échéances" : "Tasks & Deadlines"}
+                  {locale === "fr"
+                    ? "Tâches et échéances"
+                    : "Tasks & Deadlines"}
                 </h2>
                 <p className="text-xs text-muted-foreground">
                   {locale === "fr"
@@ -1681,15 +2052,18 @@ export function MatterDetailClient({
               )}
             </div>
 
-            {(!matter.tasks || matter.tasks.length === 0) ? (
+            {!matter.tasks || matter.tasks.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-12 text-center text-xs text-muted-foreground">
-                {locale === "fr" ? "Aucune tâche enregistrée." : "No tasks recorded."}
+                {locale === "fr"
+                  ? "Aucune tâche enregistrée."
+                  : "No tasks recorded."}
               </div>
             ) : (
               <div className="space-y-2">
                 {matter.tasks.map((task: any) => {
                   const isDone = task.status === "DONE";
-                  const isOverdue = task.dueAt && new Date(task.dueAt) < new Date() && !isDone;
+                  const isOverdue =
+                    task.dueAt && new Date(task.dueAt) < new Date() && !isDone;
 
                   return (
                     <div
@@ -1698,20 +2072,26 @@ export function MatterDetailClient({
                     >
                       <div className="flex items-start gap-3">
                         <button
-                          onClick={() => handleToggleTaskStatus(task.id, task.status)}
+                          onClick={() =>
+                            handleToggleTaskStatus(task.id, task.status)
+                          }
                           className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
                             isDone
                               ? "bg-emerald-600 border-emerald-600 text-white"
                               : "border-border hover:border-primary"
                           }`}
                         >
-                          {isDone && <Check className="h-3.5 w-3.5 stroke-[3]" />}
+                          {isDone && (
+                            <Check className="h-3.5 w-3.5 stroke-[3]" />
+                          )}
                         </button>
 
                         <div className="space-y-1">
                           <span
                             className={`text-sm font-semibold block ${
-                              isDone ? "line-through text-muted-foreground" : "text-foreground"
+                              isDone
+                                ? "line-through text-muted-foreground"
+                                : "text-foreground"
                             }`}
                           >
                             {task.title}
@@ -1737,7 +2117,10 @@ export function MatterDetailClient({
                             )}
 
                             {task.requiresValidation && (
-                              <Badge variant="outline" className="text-[10px] border-amber-500/40 text-amber-700">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-amber-500/40 text-amber-700"
+                              >
                                 Validation requise (BR-09)
                               </Badge>
                             )}
@@ -1767,7 +2150,10 @@ export function MatterDetailClient({
             </div>
 
             {canEdit && (
-              <form onSubmit={handleCreateNote} className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+              <form
+                onSubmit={handleCreateNote}
+                className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm"
+              >
                 {noteError && (
                   <div className="text-xs text-destructive">{noteError}</div>
                 )}
@@ -1792,10 +2178,19 @@ export function MatterDetailClient({
                       onChange={(e) => setNoteShareable(e.target.checked)}
                       className="rounded border-input text-primary"
                     />
-                    <span>{locale === "fr" ? "Partageable client" : "Shareable with client"}</span>
+                    <span>
+                      {locale === "fr"
+                        ? "Partageable client"
+                        : "Shareable with client"}
+                    </span>
                   </label>
 
-                  <Button size="sm" type="submit" disabled={isPending} className="text-xs">
+                  <Button
+                    size="sm"
+                    type="submit"
+                    disabled={isPending}
+                    className="text-xs"
+                  >
                     {locale === "fr" ? "Publier" : "Post"}
                   </Button>
                 </div>
@@ -1803,7 +2198,7 @@ export function MatterDetailClient({
             )}
 
             <div className="space-y-3">
-              {(!matter.notes || matter.notes.length === 0) ? (
+              {!matter.notes || matter.notes.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
                   {locale === "fr" ? "Aucune note rédigée." : "No notes yet."}
                 </div>
@@ -1814,9 +2209,13 @@ export function MatterDetailClient({
                     className="rounded-xl border border-border bg-card p-4 shadow-sm text-xs space-y-2"
                   >
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span className="font-semibold text-foreground">{note.author?.name}</span>
+                      <span className="font-semibold text-foreground">
+                        {note.author?.name}
+                      </span>
                       <div className="flex items-center gap-1.5">
-                        <span>{new Date(note.createdAt).toLocaleDateString()}</span>
+                        <span>
+                          {new Date(note.createdAt).toLocaleDateString()}
+                        </span>
                         {canEdit && (
                           <button
                             onClick={() => handleDeleteNote(note.id)}
@@ -1833,7 +2232,10 @@ export function MatterDetailClient({
                     </p>
 
                     {note.shareable && (
-                      <Badge variant="outline" className="text-[10px] text-primary border-primary/20">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] text-primary border-primary/20"
+                      >
                         Partageable
                       </Badge>
                     )}
@@ -1863,7 +2265,9 @@ export function MatterDetailClient({
                   className="gap-1.5 text-xs border-gold text-gold hover:bg-gold/10"
                 >
                   <FileText className="h-3.5 w-3.5" />
-                  {locale === "fr" ? "Générer depuis un modèle" : "Generate from template"}
+                  {locale === "fr"
+                    ? "Générer depuis un modèle"
+                    : "Generate from template"}
                 </Button>
                 <Button
                   size="sm"
@@ -1877,7 +2281,7 @@ export function MatterDetailClient({
             )}
           </div>
 
-          {(!matter.documents || matter.documents.length === 0) ? (
+          {!matter.documents || matter.documents.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-12 text-center text-xs text-muted-foreground">
               {locale === "fr"
                 ? "Aucun document versé dans ce dossier pour le moment."
@@ -1888,11 +2292,21 @@ export function MatterDetailClient({
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-border bg-surface-muted text-xs font-semibold text-muted-foreground uppercase">
                   <tr>
-                    <th className="px-5 py-3">{locale === "fr" ? "Document" : "Document"}</th>
-                    <th className="px-5 py-3">{locale === "fr" ? "Catégorie" : "Category"}</th>
-                    <th className="px-5 py-3">{locale === "fr" ? "Version" : "Version"}</th>
-                    <th className="px-5 py-3">{locale === "fr" ? "Sécurité / Intégrité" : "Security"}</th>
-                    <th className="px-5 py-3 text-right">{locale === "fr" ? "Actions" : "Actions"}</th>
+                    <th className="px-5 py-3">
+                      {locale === "fr" ? "Document" : "Document"}
+                    </th>
+                    <th className="px-5 py-3">
+                      {locale === "fr" ? "Catégorie" : "Category"}
+                    </th>
+                    <th className="px-5 py-3">
+                      {locale === "fr" ? "Version" : "Version"}
+                    </th>
+                    <th className="px-5 py-3">
+                      {locale === "fr" ? "Sécurité / Intégrité" : "Security"}
+                    </th>
+                    <th className="px-5 py-3 text-right">
+                      {locale === "fr" ? "Actions" : "Actions"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -1903,7 +2317,10 @@ export function MatterDetailClient({
                     const isValidated = latest?.status === "VALIDATED";
 
                     return (
-                      <tr key={doc.id} className="hover:bg-surface-muted/50 transition-colors">
+                      <tr
+                        key={doc.id}
+                        className="hover:bg-surface-muted/50 transition-colors"
+                      >
                         <td className="px-5 py-4">
                           <div className="font-semibold text-foreground flex items-center gap-2">
                             <FileText className="h-4 w-4 text-primary shrink-0" />
@@ -1913,18 +2330,25 @@ export function MatterDetailClient({
                             <div className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5 font-mono">
                               <span>{latest.fileName}</span>
                               <span>•</span>
-                              <span>{(latest.sizeBytes / 1024).toFixed(1)} Ko</span>
+                              <span>
+                                {(latest.sizeBytes / 1024).toFixed(1)} Ko
+                              </span>
                             </div>
                           )}
                         </td>
 
                         <td className="px-5 py-4 text-xs text-muted-foreground">
-                          {locale === "en" ? doc.category?.nameEn : doc.category?.nameFr || "—"}
+                          {locale === "en"
+                            ? doc.category?.nameEn
+                            : doc.category?.nameFr || "—"}
                         </td>
 
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-1.5">
-                            <Badge variant="outline" className="text-xs font-mono">
+                            <Badge
+                              variant="outline"
+                              className="text-xs font-mono"
+                            >
                               v{latest?.versionNumber || 1}
                             </Badge>
                             {isValidated ? (
@@ -1959,6 +2383,23 @@ export function MatterDetailClient({
 
                         <td className="px-5 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            {latest && isClean && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleOpenVisaDrawer(doc, latest)
+                                }
+                                className="h-8 gap-1 text-xs text-primary border-primary/30 hover:bg-primary/5"
+                                title="Circuit de visa et signature électronique probante (Loi n° 2024/017)"
+                              >
+                                <FileCheck className="h-3.5 w-3.5" />
+                                {locale === "fr"
+                                  ? "Viser / Signer"
+                                  : "Sign / Visa"}
+                              </Button>
+                            )}
+
                             {canEdit && !isValidated && latest && isClean && (
                               <Button
                                 size="sm"
@@ -2000,7 +2441,9 @@ export function MatterDetailClient({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-foreground">
-                {locale === "fr" ? "Audiences et calendrier du dossier" : "Hearings & Calendar"}
+                {locale === "fr"
+                  ? "Audiences et calendrier du dossier"
+                  : "Hearings & Calendar"}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {locale === "fr"
@@ -2016,12 +2459,14 @@ export function MatterDetailClient({
                 className="gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
               >
                 <Plus className="h-3.5 w-3.5" />
-                {locale === "fr" ? "Planifier audience / délai" : "Schedule Event"}
+                {locale === "fr"
+                  ? "Planifier audience / délai"
+                  : "Schedule Event"}
               </Button>
             )}
           </div>
 
-          {(!matter.events || matter.events.length === 0) ? (
+          {!matter.events || matter.events.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border p-12 text-center text-xs text-muted-foreground">
               <Calendar className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
               {locale === "fr"
@@ -2033,11 +2478,25 @@ export function MatterDetailClient({
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-border bg-surface-muted text-xs font-semibold text-muted-foreground uppercase">
                   <tr>
-                    <th className="px-5 py-3">{locale === "fr" ? "Type" : "Type"}</th>
-                    <th className="px-5 py-3">{locale === "fr" ? "Événement & Lieu" : "Event & Location"}</th>
-                    <th className="px-5 py-3">{locale === "fr" ? "Date & Heure" : "Date & Time"}</th>
-                    <th className="px-5 py-3">{locale === "fr" ? "Statut / Déontologie" : "Status / Rule"}</th>
-                    <th className="px-5 py-3 text-right">{locale === "fr" ? "Actions" : "Actions"}</th>
+                    <th className="px-5 py-3">
+                      {locale === "fr" ? "Type" : "Type"}
+                    </th>
+                    <th className="px-5 py-3">
+                      {locale === "fr"
+                        ? "Événement & Lieu"
+                        : "Event & Location"}
+                    </th>
+                    <th className="px-5 py-3">
+                      {locale === "fr" ? "Date & Heure" : "Date & Time"}
+                    </th>
+                    <th className="px-5 py-3">
+                      {locale === "fr"
+                        ? "Statut / Déontologie"
+                        : "Status / Rule"}
+                    </th>
+                    <th className="px-5 py-3 text-right">
+                      {locale === "fr" ? "Actions" : "Actions"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -2072,7 +2531,9 @@ export function MatterDetailClient({
                           <div className="space-y-0.5">
                             <span
                               className={`font-semibold text-sm ${
-                                isPostponed ? "line-through text-muted-foreground" : "text-foreground"
+                                isPostponed
+                                  ? "line-through text-muted-foreground"
+                                  : "text-foreground"
                               }`}
                             >
                               {ev.title}
@@ -2108,8 +2569,13 @@ export function MatterDetailClient({
                         <td className="px-5 py-4">
                           <div className="flex flex-col gap-1 items-start">
                             {isPostponed ? (
-                              <Badge variant="outline" className="text-xs bg-amber-50 text-amber-800 border-amber-300">
-                                {locale === "fr" ? "Renvoyé (Conservé)" : "Postponed (Preserved)"}
+                              <Badge
+                                variant="outline"
+                                className="text-xs bg-amber-50 text-amber-800 border-amber-300"
+                              >
+                                {locale === "fr"
+                                  ? "Renvoyé (Conservé)"
+                                  : "Postponed (Preserved)"}
                               </Badge>
                             ) : (
                               <Badge variant="outline" className="text-xs">
@@ -2150,16 +2616,18 @@ export function MatterDetailClient({
                               </Button>
                             )}
 
-                            {isDeadline && !ev.deadlineValidatedById && canEdit && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleValidateDeadline(ev.id)}
-                                className="h-8 text-xs bg-[#B08D57] hover:bg-[#B08D57]/90 text-white"
-                              >
-                                <Check className="h-3.5 w-3.5 mr-1" />
-                                {locale === "fr" ? "Valider" : "Validate"}
-                              </Button>
-                            )}
+                            {isDeadline &&
+                              !ev.deadlineValidatedById &&
+                              canEdit && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleValidateDeadline(ev.id)}
+                                  className="h-8 text-xs bg-[#B08D57] hover:bg-[#B08D57]/90 text-white"
+                                >
+                                  <Check className="h-3.5 w-3.5 mr-1" />
+                                  {locale === "fr" ? "Valider" : "Validate"}
+                                </Button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -2178,7 +2646,9 @@ export function MatterDetailClient({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-foreground">
-                {locale === "fr" ? "Chronologie consolidée du dossier" : "Matter Consolidated Timeline"}
+                {locale === "fr"
+                  ? "Chronologie consolidée du dossier"
+                  : "Matter Consolidated Timeline"}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {locale === "fr"
@@ -2194,7 +2664,9 @@ export function MatterDetailClient({
               disabled={isLoadingTimeline}
               className="gap-1.5 text-xs"
             >
-              <RotateCcw className={`h-3.5 w-3.5 ${isLoadingTimeline ? "animate-spin" : ""}`} />
+              <RotateCcw
+                className={`h-3.5 w-3.5 ${isLoadingTimeline ? "animate-spin" : ""}`}
+              />
               {locale === "fr" ? "Actualiser" : "Refresh"}
             </Button>
           </div>
@@ -2203,16 +2675,22 @@ export function MatterDetailClient({
             {timelineEntries.length === 0 ? (
               <div className="text-center py-12 text-xs text-muted-foreground">
                 {isLoadingTimeline
-                  ? (locale === "fr" ? "Chargement de la chronologie..." : "Loading timeline...")
-                  : (locale === "fr" ? "Aucun événement répertorié dans la chronologie." : "No timeline events recorded.")}
+                  ? locale === "fr"
+                    ? "Chargement de la chronologie..."
+                    : "Loading timeline..."
+                  : locale === "fr"
+                    ? "Aucun événement répertorié dans la chronologie."
+                    : "No timeline events recorded."}
               </div>
             ) : (
               <div className="relative border-l-2 border-[#E5E0D8] ml-4 pl-6 space-y-6">
                 {timelineEntries.map((entry) => {
-                  let badgeColor = "bg-primary/10 text-primary border-primary/20";
+                  let badgeColor =
+                    "bg-primary/10 text-primary border-primary/20";
                   let Icon = Clock;
                   if (entry.type === "STATUS_CHANGE") {
-                    badgeColor = "bg-emerald-50 text-emerald-800 border-emerald-300";
+                    badgeColor =
+                      "bg-emerald-50 text-emerald-800 border-emerald-300";
                     Icon = CheckCircle2;
                   } else if (entry.type === "DOCUMENT") {
                     badgeColor = "bg-blue-50 text-blue-800 border-blue-300";
@@ -2221,10 +2699,12 @@ export function MatterDetailClient({
                     badgeColor = "bg-amber-50 text-amber-800 border-amber-300";
                     Icon = Calendar;
                   } else if (entry.type === "NOTE") {
-                    badgeColor = "bg-purple-50 text-purple-800 border-purple-300";
+                    badgeColor =
+                      "bg-purple-50 text-purple-800 border-purple-300";
                     Icon = MessageSquare;
                   } else if (entry.type === "TASK") {
-                    badgeColor = "bg-neutral-100 text-neutral-800 border-neutral-300";
+                    badgeColor =
+                      "bg-neutral-100 text-neutral-800 border-neutral-300";
                     Icon = Clock;
                   }
 
@@ -2237,7 +2717,9 @@ export function MatterDetailClient({
                       <div className="rounded-xl border border-border bg-surface p-4 shadow-2xs hover:shadow-sm transition-all space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${badgeColor}`}>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${badgeColor}`}
+                            >
                               {entry.type}
                             </span>
                             <h3 className="text-xs font-bold text-foreground">
@@ -2283,7 +2765,9 @@ export function MatterDetailClient({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-foreground">
-                {locale === "fr" ? "Journal d'audit du dossier" : "Matter Audit Trail"}
+                {locale === "fr"
+                  ? "Journal d'audit du dossier"
+                  : "Matter Audit Trail"}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {locale === "fr"
@@ -2299,7 +2783,9 @@ export function MatterDetailClient({
               disabled={isLoadingLogs}
               className="gap-1.5 text-xs"
             >
-              <RotateCcw className={`h-3.5 w-3.5 ${isLoadingLogs ? "animate-spin" : ""}`} />
+              <RotateCcw
+                className={`h-3.5 w-3.5 ${isLoadingLogs ? "animate-spin" : ""}`}
+              />
               {locale === "fr" ? "Actualiser" : "Refresh"}
             </Button>
           </div>
@@ -2319,15 +2805,25 @@ export function MatterDetailClient({
                 <tbody className="divide-y divide-border">
                   {matterLogs.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-xs">
+                      <td
+                        colSpan={5}
+                        className="px-4 py-8 text-center text-muted-foreground text-xs"
+                      >
                         {isLoadingLogs
-                          ? (locale === "fr" ? "Chargement du journal..." : "Loading audit log...")
-                          : (locale === "fr" ? "Aucun événement d'audit disponible." : "No audit entries found.")}
+                          ? locale === "fr"
+                            ? "Chargement du journal..."
+                            : "Loading audit log..."
+                          : locale === "fr"
+                            ? "Aucun événement d'audit disponible."
+                            : "No audit entries found."}
                       </td>
                     </tr>
                   ) : (
                     matterLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-muted/30 transition text-xs">
+                      <tr
+                        key={log.id}
+                        className="hover:bg-muted/30 transition text-xs"
+                      >
                         <td className="px-4 py-3 whitespace-nowrap font-mono text-muted-foreground">
                           {new Date(log.createdAt).toLocaleString("fr-FR")}
                         </td>
@@ -2340,7 +2836,8 @@ export function MatterDetailClient({
                           </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
-                          {log.entityType} {log.entityId ? `(${log.entityId.slice(0, 8)})` : ""}
+                          {log.entityType}{" "}
+                          {log.entityId ? `(${log.entityId.slice(0, 8)})` : ""}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap font-mono text-muted-foreground">
                           {log.ip ?? "—"}
@@ -2361,7 +2858,9 @@ export function MatterDetailClient({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-foreground">
-                {locale === "fr" ? "Registre des Communications & Échanges" : "Communications & Correspondence Register"}
+                {locale === "fr"
+                  ? "Registre des Communications & Échanges"
+                  : "Communications & Correspondence Register"}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {locale === "fr"
@@ -2371,14 +2870,29 @@ export function MatterDetailClient({
             </div>
 
             {canEdit && (
-              <Button
-                size="sm"
-                onClick={() => setIsAddCommOpen(true)}
-                className="gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {locale === "fr" ? "Consigner un échange" : "Log Communication"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsImportEmailOpen(true)}
+                  className="gap-1.5 text-xs"
+                >
+                  <Mail className="h-3.5 w-3.5 text-primary" />
+                  {locale === "fr"
+                    ? "Importer un e-mail (.eml)"
+                    : "Import Email (.eml)"}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setIsAddCommOpen(true)}
+                  className="gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {locale === "fr"
+                    ? "Consigner un échange"
+                    : "Log Communication"}
+                </Button>
+              </div>
             )}
           </div>
 
@@ -2387,17 +2901,33 @@ export function MatterDetailClient({
               <table className="w-full text-left text-sm">
                 <thead className="bg-muted/50 border-b border-border text-xs uppercase font-semibold text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3">{locale === "fr" ? "Date" : "Date"}</th>
-                    <th className="px-4 py-3">{locale === "fr" ? "Canal & Sens" : "Channel & Direction"}</th>
-                    <th className="px-4 py-3">{locale === "fr" ? "Objet / Contenu" : "Subject & Content"}</th>
-                    <th className="px-4 py-3">{locale === "fr" ? "Pièce jointe" : "Attachment"}</th>
-                    <th className="px-4 py-3">{locale === "fr" ? "Auteur" : "Author"}</th>
+                    <th className="px-4 py-3">
+                      {locale === "fr" ? "Date" : "Date"}
+                    </th>
+                    <th className="px-4 py-3">
+                      {locale === "fr" ? "Canal & Sens" : "Channel & Direction"}
+                    </th>
+                    <th className="px-4 py-3">
+                      {locale === "fr"
+                        ? "Objet / Contenu"
+                        : "Subject & Content"}
+                    </th>
+                    <th className="px-4 py-3">
+                      {locale === "fr" ? "Pièce jointe" : "Attachment"}
+                    </th>
+                    <th className="px-4 py-3">
+                      {locale === "fr" ? "Auteur" : "Author"}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {(!matter.communications || matter.communications.length === 0) ? (
+                  {!matter.communications ||
+                  matter.communications.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-xs">
+                      <td
+                        colSpan={5}
+                        className="px-4 py-8 text-center text-muted-foreground text-xs"
+                      >
                         {locale === "fr"
                           ? "Aucune communication consignée dans ce dossier pour le moment."
                           : "No communications logged in this matter yet."}
@@ -2414,19 +2944,28 @@ export function MatterDetailClient({
                         SMS: "📱 SMS",
                       };
                       return (
-                        <tr key={comm.id} className="hover:bg-muted/30 transition text-xs">
+                        <tr
+                          key={comm.id}
+                          className="hover:bg-muted/30 transition text-xs"
+                        >
                           <td className="px-4 py-3 whitespace-nowrap font-mono text-muted-foreground">
-                            {new Date(comm.occurredAt).toLocaleDateString("fr-FR", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            {new Date(comm.occurredAt).toLocaleDateString(
+                              "fr-FR",
+                              {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              },
+                            )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
-                              <Badge variant="outline" className="text-[10px] bg-muted/30">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-muted/30"
+                              >
                                 {channelIcons[comm.channel] || comm.channel}
                               </Badge>
                               <Badge
@@ -2435,21 +2974,29 @@ export function MatterDetailClient({
                                   comm.direction === "INBOUND"
                                     ? "bg-blue-500/10 text-blue-700 border-blue-500/30"
                                     : comm.direction === "OUTBOUND"
-                                    ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
-                                    : "bg-muted text-muted-foreground"
+                                      ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
+                                      : "bg-muted text-muted-foreground"
                                 }`}
                               >
                                 {comm.direction === "INBOUND"
-                                  ? (locale === "fr" ? "Entrant" : "Inbound")
+                                  ? locale === "fr"
+                                    ? "Entrant"
+                                    : "Inbound"
                                   : comm.direction === "OUTBOUND"
-                                  ? (locale === "fr" ? "Sortant" : "Outbound")
-                                  : (locale === "fr" ? "Interne" : "Internal")}
+                                    ? locale === "fr"
+                                      ? "Sortant"
+                                      : "Outbound"
+                                    : locale === "fr"
+                                      ? "Interne"
+                                      : "Internal"}
                               </Badge>
                             </div>
                           </td>
                           <td className="px-4 py-3">
                             {comm.subject && (
-                              <div className="font-semibold text-foreground">{comm.subject}</div>
+                              <div className="font-semibold text-foreground">
+                                {comm.subject}
+                              </div>
                             )}
                             {comm.body && (
                               <div className="text-muted-foreground text-[11px] line-clamp-2 mt-0.5">
@@ -2467,7 +3014,9 @@ export function MatterDetailClient({
                                 {comm.document.title || comm.document.filename}
                               </Link>
                             ) : (
-                              <span className="text-muted-foreground text-[11px]">—</span>
+                              <span className="text-muted-foreground text-[11px]">
+                                —
+                              </span>
                             )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-muted-foreground font-medium">
@@ -2491,7 +3040,9 @@ export function MatterDetailClient({
             <div>
               <h2 className="text-base font-bold text-foreground flex items-center gap-2">
                 <ShieldCheck className="h-5 w-5 text-gold" />
-                {locale === "fr" ? "Gouvernance de Clôture & Rétention Légale" : "Closure & Retention Governance"}
+                {locale === "fr"
+                  ? "Gouvernance de Clôture & Rétention Légale"
+                  : "Closure & Retention Governance"}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {locale === "fr"
@@ -2507,7 +3058,9 @@ export function MatterDetailClient({
               disabled={isLoadingReadiness}
               className="gap-1.5 text-xs"
             >
-              <RotateCcw className={`h-3.5 w-3.5 ${isLoadingReadiness ? "animate-spin" : ""}`} />
+              <RotateCcw
+                className={`h-3.5 w-3.5 ${isLoadingReadiness ? "animate-spin" : ""}`}
+              />
               {locale === "fr" ? "Vérifier la conformité" : "Check Readiness"}
             </Button>
           </div>
@@ -2522,7 +3075,9 @@ export function MatterDetailClient({
           <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b pb-3">
               <h3 className="text-sm font-bold text-foreground">
-                {locale === "fr" ? "Grille d'Audit Pré-Clôture (Règle BR-14)" : "Pre-Closure Compliance Checklist (BR-14)"}
+                {locale === "fr"
+                  ? "Grille d'Audit Pré-Clôture (Règle BR-14)"
+                  : "Pre-Closure Compliance Checklist (BR-14)"}
               </h3>
               {closureReadiness && (
                 <Badge
@@ -2534,15 +3089,21 @@ export function MatterDetailClient({
                   }`}
                 >
                   {closureReadiness.ready
-                    ? (locale === "fr" ? "Prêt pour clôture ✓" : "Ready for Closure ✓")
-                    : (locale === "fr" ? "Clôture Bloquée ⚠️" : "Closure Blocked ⚠️")}
+                    ? locale === "fr"
+                      ? "Prêt pour clôture ✓"
+                      : "Ready for Closure ✓"
+                    : locale === "fr"
+                      ? "Clôture Bloquée ⚠️"
+                      : "Closure Blocked ⚠️"}
                 </Badge>
               )}
             </div>
 
             {isLoadingReadiness ? (
               <div className="py-6 text-center text-xs text-muted-foreground">
-                {locale === "fr" ? "Contrôle des critères déontologiques en cours..." : "Checking compliance prerequisites..."}
+                {locale === "fr"
+                  ? "Contrôle des critères déontologiques en cours..."
+                  : "Checking compliance prerequisites..."}
               </div>
             ) : closureReadiness ? (
               <div className="space-y-3">
@@ -2563,7 +3124,9 @@ export function MatterDetailClient({
                       )}
                       <div>
                         <div className="font-semibold">{c.label}</div>
-                        <div className="text-[11px] opacity-80 mt-0.5">{c.details}</div>
+                        <div className="text-[11px] opacity-80 mt-0.5">
+                          {c.details}
+                        </div>
                       </div>
                     </div>
                     <Badge variant="outline" className="text-[10px] shrink-0">
@@ -2574,8 +3137,14 @@ export function MatterDetailClient({
               </div>
             ) : (
               <div className="py-4 text-center text-xs text-muted-foreground">
-                <Button size="sm" variant="outline" onClick={loadClosureReadiness}>
-                  {locale === "fr" ? "Lancer l'audit de clôture" : "Run Closure Audit"}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={loadClosureReadiness}
+                >
+                  {locale === "fr"
+                    ? "Lancer l'audit de clôture"
+                    : "Run Closure Audit"}
                 </Button>
               </div>
             )}
@@ -2587,7 +3156,9 @@ export function MatterDetailClient({
             <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-3">
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                 <Clock className="h-4 w-4 text-primary" />
-                {locale === "fr" ? "1. Demande de clôture formelle" : "1. Request Closure"}
+                {locale === "fr"
+                  ? "1. Demande de clôture formelle"
+                  : "1. Request Closure"}
               </h3>
               <p className="text-xs text-muted-foreground">
                 {locale === "fr"
@@ -2596,9 +3167,16 @@ export function MatterDetailClient({
               </p>
 
               {matter.status === "OPEN" ? (
-                <form onSubmit={handleRequestClosure} className="space-y-3 pt-2">
+                <form
+                  onSubmit={handleRequestClosure}
+                  className="space-y-3 pt-2"
+                >
                   <div className="space-y-1">
-                    <Label htmlFor="closureReason">{locale === "fr" ? "Motif de clôture *" : "Closure Reason *"}</Label>
+                    <Label htmlFor="closureReason">
+                      {locale === "fr"
+                        ? "Motif de clôture *"
+                        : "Closure Reason *"}
+                    </Label>
                     <Input
                       id="closureReason"
                       value={closureReasonInput}
@@ -2607,8 +3185,15 @@ export function MatterDetailClient({
                       required
                     />
                   </div>
-                  <Button type="submit" size="sm" disabled={isPending} className="w-full text-xs">
-                    {locale === "fr" ? "Soumettre la demande de clôture" : "Submit Closure Request"}
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isPending}
+                    className="w-full text-xs"
+                  >
+                    {locale === "fr"
+                      ? "Soumettre la demande de clôture"
+                      : "Submit Closure Request"}
                   </Button>
                 </form>
               ) : (
@@ -2624,7 +3209,9 @@ export function MatterDetailClient({
             <div className="rounded-xl border border-border bg-card p-5 shadow-xs space-y-3">
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-gold" />
-                {locale === "fr" ? "2. Décision de l'Associé (Gate Déontologique)" : "2. Partner Approval"}
+                {locale === "fr"
+                  ? "2. Décision de l'Associé (Gate Déontologique)"
+                  : "2. Partner Approval"}
               </h3>
               <p className="text-xs text-muted-foreground">
                 {locale === "fr"
@@ -2639,39 +3226,65 @@ export function MatterDetailClient({
                       <input
                         type="checkbox"
                         checked={closureArchiveImmediately}
-                        onChange={(e) => setClosureArchiveImmediately(e.target.checked)}
+                        onChange={(e) =>
+                          setClosureArchiveImmediately(e.target.checked)
+                        }
                         className="rounded border-input text-primary"
                       />
                       <span className="font-medium">
-                        {locale === "fr" ? "Archiver immédiatement le dossier" : "Archive immediately"}
+                        {locale === "fr"
+                          ? "Archiver immédiatement le dossier"
+                          : "Archive immediately"}
                       </span>
                     </label>
 
                     <Button
                       size="sm"
                       onClick={handleApproveClosure}
-                      disabled={isPending || (closureReadiness && !closureReadiness.ready)}
+                      disabled={
+                        isPending ||
+                        (closureReadiness && !closureReadiness.ready)
+                      }
                       className="w-full text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                      {locale === "fr" ? "Approuver la clôture définitive" : "Approve Formal Closure"}
+                      {locale === "fr"
+                        ? "Approuver la clôture définitive"
+                        : "Approve Formal Closure"}
                     </Button>
                   </div>
                 ) : (
-                  <form onSubmit={handleReopenMatter} className="space-y-3 pt-2">
+                  <form
+                    onSubmit={handleReopenMatter}
+                    className="space-y-3 pt-2"
+                  >
                     <div className="space-y-1">
-                      <Label htmlFor="reopenJust">{locale === "fr" ? "Justification de réouverture *" : "Reopen Justification *"}</Label>
+                      <Label htmlFor="reopenJust">
+                        {locale === "fr"
+                          ? "Justification de réouverture *"
+                          : "Reopen Justification *"}
+                      </Label>
                       <Input
                         id="reopenJust"
                         value={reopenJustificationInput}
-                        onChange={(e) => setReopenJustificationInput(e.target.value)}
+                        onChange={(e) =>
+                          setReopenJustificationInput(e.target.value)
+                        }
                         placeholder="ex: Nouvel acte signifié, recours en cassation..."
                         required
                       />
                     </div>
-                    <Button type="submit" size="sm" variant="outline" disabled={isPending} className="w-full text-xs gap-1.5">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="outline"
+                      disabled={isPending}
+                      className="w-full text-xs gap-1.5"
+                    >
                       <RotateCcw className="h-3.5 w-3.5" />
-                      {locale === "fr" ? "Réouvrir le dossier" : "Reopen Matter"}
+                      {locale === "fr"
+                        ? "Réouvrir le dossier"
+                        : "Reopen Matter"}
                     </Button>
                   </form>
                 )
@@ -2691,7 +3304,9 @@ export function MatterDetailClient({
               <div>
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                   <ShieldAlert className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-                  {locale === "fr" ? "Gels Conservatoires & Rétention Documentaire (Règle BR-15)" : "Legal Holds & Document Retention (BR-15)"}
+                  {locale === "fr"
+                    ? "Gels Conservatoires & Rétention Documentaire (Règle BR-15)"
+                    : "Legal Holds & Document Retention (BR-15)"}
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {locale === "fr"
@@ -2708,13 +3323,16 @@ export function MatterDetailClient({
                   className="gap-1.5 text-xs border-rose-500/40 text-rose-700 hover:bg-rose-500/10"
                 >
                   <Lock className="h-3.5 w-3.5" />
-                  {locale === "fr" ? "Poser un gel conservatoire" : "Place Legal Hold"}
+                  {locale === "fr"
+                    ? "Poser un gel conservatoire"
+                    : "Place Legal Hold"}
                 </Button>
               )}
             </div>
 
             <div className="space-y-2">
-              {(!matter.destructionHolds || matter.destructionHolds.length === 0) ? (
+              {!matter.destructionHolds ||
+              matter.destructionHolds.length === 0 ? (
                 <div className="py-4 text-center text-xs text-muted-foreground">
                   {locale === "fr"
                     ? "Aucun gel conservatoire actif sur ce dossier. Les règles de conservation normales s'appliquent."
@@ -2732,7 +3350,9 @@ export function MatterDetailClient({
                         {h.reason}
                       </div>
                       <div className="text-[11px] text-muted-foreground mt-0.5">
-                        {locale === "fr" ? "Posé le" : "Placed on"} {new Date(h.placedAt).toLocaleDateString("fr-FR")} {h.placedBy ? `par ${h.placedBy.name}` : ""}
+                        {locale === "fr" ? "Posé le" : "Placed on"}{" "}
+                        {new Date(h.placedAt).toLocaleDateString("fr-FR")}{" "}
+                        {h.placedBy ? `par ${h.placedBy.name}` : ""}
                       </div>
                     </div>
 
@@ -2760,7 +3380,11 @@ export function MatterDetailClient({
       <SidePanel
         open={isAddEventOpen}
         onOpenChange={setIsAddEventOpen}
-        title={locale === "fr" ? "Planifier une audience ou échéance" : "Schedule Event"}
+        title={
+          locale === "fr"
+            ? "Planifier une audience ou échéance"
+            : "Schedule Event"
+        }
         subtitle={matter.title}
       >
         <form onSubmit={handleCreateEvent} className="space-y-4">
@@ -2771,7 +3395,9 @@ export function MatterDetailClient({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="evTitle">{locale === "fr" ? "Titre / Objet *" : "Title *"}</Label>
+            <Label htmlFor="evTitle">
+              {locale === "fr" ? "Titre / Objet *" : "Title *"}
+            </Label>
             <Input
               id="evTitle"
               value={eventTitle}
@@ -2782,7 +3408,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="evTypeSelect">{locale === "fr" ? "Type d'événement" : "Type"}</Label>
+            <Label htmlFor="evTypeSelect">
+              {locale === "fr" ? "Type d'événement" : "Type"}
+            </Label>
             <select
               id="evTypeSelect"
               value={eventType}
@@ -2790,8 +3418,12 @@ export function MatterDetailClient({
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="HEARING">Audience de plaidoirie / référé</option>
-              <option value="PROCEDURAL_DEADLINE">Échéance procédurale légale (avec source)</option>
-              <option value="INTERNAL_DEADLINE">Échéance interne de préparation</option>
+              <option value="PROCEDURAL_DEADLINE">
+                Échéance procédurale légale (avec source)
+              </option>
+              <option value="INTERNAL_DEADLINE">
+                Échéance interne de préparation
+              </option>
               <option value="APPOINTMENT">Rendez-vous client / confrère</option>
               <option value="MEETING">Réunion de travail</option>
               <option value="DECISION">Prononcé du délibéré / jugement</option>
@@ -2800,8 +3432,13 @@ export function MatterDetailClient({
 
           {eventType === "PROCEDURAL_DEADLINE" && (
             <div className="space-y-1.5 p-3 rounded-lg border border-amber-300 bg-amber-50">
-              <Label htmlFor="evSource" className="text-amber-900 font-semibold">
-                {locale === "fr" ? "Source légale / judiciaire *" : "Legal / Court Source *"}
+              <Label
+                htmlFor="evSource"
+                className="text-amber-900 font-semibold"
+              >
+                {locale === "fr"
+                  ? "Source légale / judiciaire *"
+                  : "Legal / Court Source *"}
               </Label>
               <Input
                 id="evSource"
@@ -2820,7 +3457,11 @@ export function MatterDetailClient({
 
           {matter.procedures && matter.procedures.length > 0 && (
             <div className="space-y-1.5">
-              <Label htmlFor="evProcSelect">{locale === "fr" ? "Procédure judiciaire rattachée" : "Linked Procedure"}</Label>
+              <Label htmlFor="evProcSelect">
+                {locale === "fr"
+                  ? "Procédure judiciaire rattachée"
+                  : "Linked Procedure"}
+              </Label>
               <select
                 id="evProcSelect"
                 value={eventProcedureId}
@@ -2839,7 +3480,9 @@ export function MatterDetailClient({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="evStartsAt">{locale === "fr" ? "Date & Heure *" : "Start Date *"}</Label>
+              <Label htmlFor="evStartsAt">
+                {locale === "fr" ? "Date & Heure *" : "Start Date *"}
+              </Label>
               <Input
                 id="evStartsAt"
                 type="datetime-local"
@@ -2850,7 +3493,9 @@ export function MatterDetailClient({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="evEndsAt">{locale === "fr" ? "Fin prévue" : "End Date"}</Label>
+              <Label htmlFor="evEndsAt">
+                {locale === "fr" ? "Fin prévue" : "End Date"}
+              </Label>
               <Input
                 id="evEndsAt"
                 type="datetime-local"
@@ -2861,7 +3506,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="evLocation">{locale === "fr" ? "Lieu / Salle d'audience" : "Location"}</Label>
+            <Label htmlFor="evLocation">
+              {locale === "fr" ? "Lieu / Salle d'audience" : "Location"}
+            </Label>
             <Input
               id="evLocation"
               value={eventLocation}
@@ -2871,7 +3518,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="evDesc">{locale === "fr" ? "Ordre du jour / Notes" : "Description"}</Label>
+            <Label htmlFor="evDesc">
+              {locale === "fr" ? "Ordre du jour / Notes" : "Description"}
+            </Label>
             <textarea
               id="evDesc"
               value={eventDescription}
@@ -2905,7 +3554,9 @@ export function MatterDetailClient({
               <div className="flex items-center gap-2 text-amber-700">
                 <RotateCcw className="h-5 w-5" />
                 <h3 className="font-bold text-lg font-serif text-foreground">
-                  {locale === "fr" ? "Renvoyer l'audience (BR-05)" : "Postpone Hearing (BR-05)"}
+                  {locale === "fr"
+                    ? "Renvoyer l'audience (BR-05)"
+                    : "Postpone Hearing (BR-05)"}
                 </h3>
               </div>
 
@@ -2923,7 +3574,11 @@ export function MatterDetailClient({
 
               <div className="space-y-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="postNewDate">{locale === "fr" ? "Nouvelle date d'audience *" : "New Hearing Date *"}</Label>
+                  <Label htmlFor="postNewDate">
+                    {locale === "fr"
+                      ? "Nouvelle date d'audience *"
+                      : "New Hearing Date *"}
+                  </Label>
                   <Input
                     id="postNewDate"
                     type="datetime-local"
@@ -2934,7 +3589,11 @@ export function MatterDetailClient({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="postReason">{locale === "fr" ? "Motif du renvoi *" : "Postponement Justification *"}</Label>
+                  <Label htmlFor="postReason">
+                    {locale === "fr"
+                      ? "Motif du renvoi *"
+                      : "Postponement Justification *"}
+                  </Label>
                   <textarea
                     id="postReason"
                     value={postponeReason}
@@ -2947,7 +3606,11 @@ export function MatterDetailClient({
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="postLoc">{locale === "fr" ? "Nouvelle salle / lieu (optionnel)" : "New Location"}</Label>
+                  <Label htmlFor="postLoc">
+                    {locale === "fr"
+                      ? "Nouvelle salle / lieu (optionnel)"
+                      : "New Location"}
+                  </Label>
                   <Input
                     id="postLoc"
                     value={postponeLocation}
@@ -2970,7 +3633,9 @@ export function MatterDetailClient({
                   disabled={isPending}
                   className="bg-[#B08D57] hover:bg-[#B08D57]/90 text-white font-medium"
                 >
-                  {locale === "fr" ? "Confirmer le renvoi" : "Confirm Postponement"}
+                  {locale === "fr"
+                    ? "Confirmer le renvoi"
+                    : "Confirm Postponement"}
                 </Button>
               </div>
             </form>
@@ -2982,7 +3647,9 @@ export function MatterDetailClient({
       <SidePanel
         open={isAddMemberOpen}
         onOpenChange={setIsAddMemberOpen}
-        title={locale === "fr" ? "Ajouter un membre au dossier" : "Add matter member"}
+        title={
+          locale === "fr" ? "Ajouter un membre au dossier" : "Add matter member"
+        }
         subtitle={matter.title}
       >
         <form onSubmit={handleAddMember} className="space-y-4">
@@ -2993,7 +3660,9 @@ export function MatterDetailClient({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="userSelect">{locale === "fr" ? "Collaborateur" : "User"}</Label>
+            <Label htmlFor="userSelect">
+              {locale === "fr" ? "Collaborateur" : "User"}
+            </Label>
             <select
               id="userSelect"
               value={selectedUserId}
@@ -3009,16 +3678,24 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="levelSelect">{locale === "fr" ? "Niveau d'accès" : "Access level"}</Label>
+            <Label htmlFor="levelSelect">
+              {locale === "fr" ? "Niveau d'accès" : "Access level"}
+            </Label>
             <select
               id="levelSelect"
               value={selectedLevel}
-              onChange={(e) => setSelectedLevel(e.target.value as MatterAccessLevel)}
+              onChange={(e) =>
+                setSelectedLevel(e.target.value as MatterAccessLevel)
+              }
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="VIEW">VIEW - Consultation seule</option>
-              <option value="EDIT">EDIT - Modification des documents et tâches</option>
-              <option value="MANAGE">MANAGE - Gestion totale et habilitation</option>
+              <option value="EDIT">
+                EDIT - Modification des documents et tâches
+              </option>
+              <option value="MANAGE">
+                MANAGE - Gestion totale et habilitation
+              </option>
             </select>
           </div>
 
@@ -3052,7 +3729,9 @@ export function MatterDetailClient({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="mTitle">{locale === "fr" ? "Intitulé de la mission *" : "Title *"}</Label>
+            <Label htmlFor="mTitle">
+              {locale === "fr" ? "Intitulé de la mission *" : "Title *"}
+            </Label>
             <Input
               id="mTitle"
               value={missionTitle}
@@ -3063,7 +3742,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="mType">{locale === "fr" ? "Type de mission" : "Type"}</Label>
+            <Label htmlFor="mType">
+              {locale === "fr" ? "Type de mission" : "Type"}
+            </Label>
             <select
               id="mType"
               value={missionType}
@@ -3071,15 +3752,23 @@ export function MatterDetailClient({
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="ADVISORY">ADVISORY - Conseil juridique</option>
-              <option value="CONSULTATION">CONSULTATION - Consultation / Avis</option>
-              <option value="DRAFTING">DRAFTING - Rédaction contractuelle</option>
-              <option value="REPRESENTATION">REPRESENTATION - Représentation légale</option>
+              <option value="CONSULTATION">
+                CONSULTATION - Consultation / Avis
+              </option>
+              <option value="DRAFTING">
+                DRAFTING - Rédaction contractuelle
+              </option>
+              <option value="REPRESENTATION">
+                REPRESENTATION - Représentation légale
+              </option>
               <option value="OTHER">OTHER - Autre mission</option>
             </select>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="mOwner">{locale === "fr" ? "Responsable de mission" : "Owner"}</Label>
+            <Label htmlFor="mOwner">
+              {locale === "fr" ? "Responsable de mission" : "Owner"}
+            </Label>
             <select
               id="mOwner"
               value={missionOwnerId}
@@ -3095,7 +3784,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="mScope">{locale === "fr" ? "Périmètre de la mission" : "Scope"}</Label>
+            <Label htmlFor="mScope">
+              {locale === "fr" ? "Périmètre de la mission" : "Scope"}
+            </Label>
             <textarea
               id="mScope"
               value={missionScope}
@@ -3107,7 +3798,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="mDeliv">{locale === "fr" ? "Livrables attendus" : "Deliverables"}</Label>
+            <Label htmlFor="mDeliv">
+              {locale === "fr" ? "Livrables attendus" : "Deliverables"}
+            </Label>
             <Input
               id="mDeliv"
               value={missionDeliverables}
@@ -3135,7 +3828,9 @@ export function MatterDetailClient({
       <SidePanel
         open={isAddProcedureOpen}
         onOpenChange={setIsAddProcedureOpen}
-        title={locale === "fr" ? "Engager une procédure" : "Add Court Procedure"}
+        title={
+          locale === "fr" ? "Engager une procédure" : "Add Court Procedure"
+        }
         subtitle={matter.title}
       >
         <form onSubmit={handleCreateProcedure} className="space-y-4">
@@ -3146,17 +3841,25 @@ export function MatterDetailClient({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="pKind">{locale === "fr" ? "Type d'instance / Procédure" : "Kind"}</Label>
+            <Label htmlFor="pKind">
+              {locale === "fr" ? "Type d'instance / Procédure" : "Kind"}
+            </Label>
             <select
               id="pKind"
               value={procedureKind}
-              onChange={(e) => setProcedureKind(e.target.value as ProcedureKind)}
+              onChange={(e) =>
+                setProcedureKind(e.target.value as ProcedureKind)
+              }
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
-              <option value="FIRST_INSTANCE">Première Instance (TPI / TGI)</option>
+              <option value="FIRST_INSTANCE">
+                Première Instance (TPI / TGI)
+              </option>
               <option value="APPEAL">Appel (Cour d'Appel)</option>
               <option value="CASSATION">Cassation (Cour Suprême / CCJA)</option>
-              <option value="ENFORCEMENT">Voies d'exécution (Saisie / Recouvrement)</option>
+              <option value="ENFORCEMENT">
+                Voies d'exécution (Saisie / Recouvrement)
+              </option>
               <option value="ARBITRATION">Arbitrage (GICAM / CCJA)</option>
               <option value="ADMINISTRATIVE">Contentieux Administratif</option>
               <option value="OTHER">Autre instance</option>
@@ -3166,7 +3869,10 @@ export function MatterDetailClient({
           {/* Parent Procedure Chain Selection for Appeals */}
           {(procedureKind === "APPEAL" || procedureKind === "CASSATION") && (
             <div className="space-y-1.5 p-3 rounded-lg border border-primary/20 bg-primary/5">
-              <Label htmlFor="parentProc" className="text-primary font-semibold">
+              <Label
+                htmlFor="parentProc"
+                className="text-primary font-semibold"
+              >
                 {locale === "fr"
                   ? "Procédure d'origine contestée (Chaîne d'instances)"
                   : "Challenged Parent Procedure"}
@@ -3177,10 +3883,15 @@ export function MatterDetailClient({
                 onChange={(e) => setParentProcedureId(e.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <option value="">{locale === "fr" ? "— Sélectionner l'instance précédente —" : "— Select previous instance —"}</option>
+                <option value="">
+                  {locale === "fr"
+                    ? "— Sélectionner l'instance précédente —"
+                    : "— Select previous instance —"}
+                </option>
                 {matter.procedures?.map((p: any) => (
                   <option key={p.id} value={p.id}>
-                    {p.kind} - {p.jurisdiction || "Tribunal"} ({p.reference || "Sans réf"})
+                    {p.kind} - {p.jurisdiction || "Tribunal"} (
+                    {p.reference || "Sans réf"})
                   </option>
                 ))}
               </select>
@@ -3194,7 +3905,9 @@ export function MatterDetailClient({
 
           <div className="space-y-1.5">
             <Label htmlFor="pJurisdiction">
-              {locale === "fr" ? "Juridiction / Tribunal *" : "Court / Tribunal *"}
+              {locale === "fr"
+                ? "Juridiction / Tribunal *"
+                : "Court / Tribunal *"}
             </Label>
             <Input
               id="pJurisdiction"
@@ -3207,7 +3920,9 @@ export function MatterDetailClient({
 
           <div className="space-y-1.5">
             <Label htmlFor="pRef">
-              {locale === "fr" ? "N° de rôle général / Réf. greffe" : "Court Docket Number"}
+              {locale === "fr"
+                ? "N° de rôle général / Réf. greffe"
+                : "Court Docket Number"}
             </Label>
             <Input
               id="pRef"
@@ -3221,7 +3936,9 @@ export function MatterDetailClient({
           {matter.missions?.length > 0 && (
             <div className="space-y-1.5">
               <Label htmlFor="linkMission">
-                {locale === "fr" ? "Mission rattachée (Optionnel)" : "Linked Mission (Optional)"}
+                {locale === "fr"
+                  ? "Mission rattachée (Optionnel)"
+                  : "Linked Mission (Optional)"}
               </Label>
               <select
                 id="linkMission"
@@ -3229,7 +3946,11 @@ export function MatterDetailClient({
                 onChange={(e) => setLinkedMissionId(e.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <option value="">{locale === "fr" ? "— Aucune mission particulière —" : "— None —"}</option>
+                <option value="">
+                  {locale === "fr"
+                    ? "— Aucune mission particulière —"
+                    : "— None —"}
+                </option>
                 {matter.missions.map((m: any) => (
                   <option key={m.id} value={m.id}>
                     {m.title} ({m.type})
@@ -3269,7 +3990,9 @@ export function MatterDetailClient({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="docTitleInput">{locale === "fr" ? "Intitulé du document *" : "Title *"}</Label>
+            <Label htmlFor="docTitleInput">
+              {locale === "fr" ? "Intitulé du document *" : "Title *"}
+            </Label>
             <Input
               id="docTitleInput"
               value={docTitle}
@@ -3280,7 +4003,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="docCatSelect">{locale === "fr" ? "Catégorie" : "Category"}</Label>
+            <Label htmlFor="docCatSelect">
+              {locale === "fr" ? "Catégorie" : "Category"}
+            </Label>
             <select
               id="docCatSelect"
               value={docCategoryId}
@@ -3296,11 +4021,15 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="docConfSelect">{locale === "fr" ? "Confidentialité" : "Confidentiality"}</Label>
+            <Label htmlFor="docConfSelect">
+              {locale === "fr" ? "Confidentialité" : "Confidentiality"}
+            </Label>
             <select
               id="docConfSelect"
               value={docConfidentiality}
-              onChange={(e) => setDocConfidentiality(e.target.value as Confidentiality)}
+              onChange={(e) =>
+                setDocConfidentiality(e.target.value as Confidentiality)
+              }
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
               <option value="STANDARD">Standard</option>
@@ -3310,7 +4039,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="docFileInput">{locale === "fr" ? "Fichier (PDF, Word, Scan) *" : "File *"}</Label>
+            <Label htmlFor="docFileInput">
+              {locale === "fr" ? "Fichier (PDF, Word, Scan) *" : "File *"}
+            </Label>
             <input
               id="docFileInput"
               type="file"
@@ -3326,7 +4057,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="docCommentInput">{locale === "fr" ? "Note de version" : "Comment"}</Label>
+            <Label htmlFor="docCommentInput">
+              {locale === "fr" ? "Note de version" : "Comment"}
+            </Label>
             <Input
               id="docCommentInput"
               value={docComment}
@@ -3354,7 +4087,11 @@ export function MatterDetailClient({
       <SidePanel
         open={isGenerateDocOpen}
         onOpenChange={setIsGenerateDocOpen}
-        title={locale === "fr" ? "Générer un acte depuis un modèle" : "Generate Document from Template"}
+        title={
+          locale === "fr"
+            ? "Générer un acte depuis un modèle"
+            : "Generate Document from Template"
+        }
         subtitle={matter.reference + " — " + matter.title}
       >
         <form onSubmit={handleExecuteGenerateDoc} className="space-y-4">
@@ -3367,7 +4104,9 @@ export function MatterDetailClient({
           {/* Template Selector */}
           <div className="space-y-1.5">
             <Label htmlFor="templateSelect">
-              {locale === "fr" ? "Modèle d'acte juridique *" : "Legal Document Template *"}
+              {locale === "fr"
+                ? "Modèle d'acte juridique *"
+                : "Legal Document Template *"}
             </Label>
             <select
               id="templateSelect"
@@ -3386,27 +4125,38 @@ export function MatterDetailClient({
 
           {/* Selected Template Variables Inputs */}
           {(() => {
-            const currentTpl = availableTemplates.find((t) => t.id === selectedTemplateId);
-            const varDefs = Array.isArray(currentTpl?.variables) ? currentTpl.variables : [];
+            const currentTpl = availableTemplates.find(
+              (t) => t.id === selectedTemplateId,
+            );
+            const varDefs = Array.isArray(currentTpl?.variables)
+              ? currentTpl.variables
+              : [];
             if (varDefs.length === 0) return null;
 
             return (
               <div className="space-y-3 rounded-lg border border-border/80 bg-muted/20 p-3.5">
                 <p className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                  {locale === "fr" ? "Paramètres personnalisés de l'acte" : "Custom Template Variables"}
+                  {locale === "fr"
+                    ? "Paramètres personnalisés de l'acte"
+                    : "Custom Template Variables"}
                 </p>
 
                 {varDefs.map((v: any) => (
                   <div key={v.key} className="space-y-1">
                     <Label htmlFor={`var_${v.key}`} className="text-xs">
-                      {locale === "en" ? v.labelEn : v.labelFr} {v.required ? "*" : ""}
+                      {locale === "en" ? v.labelEn : v.labelFr}{" "}
+                      {v.required ? "*" : ""}
                     </Label>
                     {v.type === "textarea" ? (
                       <textarea
                         id={`var_${v.key}`}
                         rows={3}
-                        value={templateCustomVars[v.key] ?? v.defaultValue ?? ""}
-                        onChange={(e) => handleCustomVarChange(v.key, e.target.value)}
+                        value={
+                          templateCustomVars[v.key] ?? v.defaultValue ?? ""
+                        }
+                        onChange={(e) =>
+                          handleCustomVarChange(v.key, e.target.value)
+                        }
                         className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
                         required={v.required}
                       />
@@ -3414,8 +4164,12 @@ export function MatterDetailClient({
                       <Input
                         id={`var_${v.key}`}
                         type={v.type === "number" ? "number" : "text"}
-                        value={templateCustomVars[v.key] ?? v.defaultValue ?? ""}
-                        onChange={(e) => handleCustomVarChange(v.key, e.target.value)}
+                        value={
+                          templateCustomVars[v.key] ?? v.defaultValue ?? ""
+                        }
+                        onChange={(e) =>
+                          handleCustomVarChange(v.key, e.target.value)
+                        }
                         className="text-xs h-8"
                         required={v.required}
                       />
@@ -3429,7 +4183,11 @@ export function MatterDetailClient({
           {/* Document Title & Category */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="genDocTitleInput">{locale === "fr" ? "Intitulé du document *" : "Document Title *"}</Label>
+              <Label htmlFor="genDocTitleInput">
+                {locale === "fr"
+                  ? "Intitulé du document *"
+                  : "Document Title *"}
+              </Label>
               <Input
                 id="genDocTitleInput"
                 value={genDocTitle}
@@ -3439,7 +4197,9 @@ export function MatterDetailClient({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="genDocCatSelect">{locale === "fr" ? "Catégorie" : "Category"}</Label>
+              <Label htmlFor="genDocCatSelect">
+                {locale === "fr" ? "Catégorie" : "Category"}
+              </Label>
               <select
                 id="genDocCatSelect"
                 value={genDocCategoryId}
@@ -3459,15 +4219,22 @@ export function MatterDetailClient({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-semibold">
-                {locale === "fr" ? "Aperçu en direct du texte fusionné" : "Live Rendered Preview"}
+                {locale === "fr"
+                  ? "Aperçu en direct du texte fusionné"
+                  : "Live Rendered Preview"}
               </Label>
               {missingPreviewVars.length > 0 ? (
                 <span className="text-[10px] text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded font-medium">
-                  {missingPreviewVars.length} {locale === "fr" ? "variable(s) à compléter" : "variable(s) to complete"}
+                  {missingPreviewVars.length}{" "}
+                  {locale === "fr"
+                    ? "variable(s) à compléter"
+                    : "variable(s) to complete"}
                 </span>
               ) : (
                 <span className="text-[10px] text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded font-medium">
-                  {locale === "fr" ? "Toutes les variables sont renseignées" : "All variables complete"}
+                  {locale === "fr"
+                    ? "Toutes les variables sont renseignées"
+                    : "All variables complete"}
                 </span>
               )}
             </div>
@@ -3475,12 +4242,16 @@ export function MatterDetailClient({
             <div className="relative rounded-md border border-border bg-muted/40 p-3 max-h-56 overflow-y-auto font-mono text-[11px] leading-relaxed whitespace-pre-wrap select-all">
               {isLoadingPreview ? (
                 <div className="text-muted-foreground text-center py-6">
-                  {locale === "fr" ? "Actualisation de l'aperçu..." : "Updating preview..."}
+                  {locale === "fr"
+                    ? "Actualisation de l'aperçu..."
+                    : "Updating preview..."}
                 </div>
               ) : (
                 renderedPreview || (
                   <span className="text-muted-foreground italic">
-                    {locale === "fr" ? "Sélectionnez un modèle pour visualiser le rendu." : "Select a template to preview."}
+                    {locale === "fr"
+                      ? "Sélectionnez un modèle pour visualiser le rendu."
+                      : "Select a template to preview."}
                   </span>
                 )
               )}
@@ -3488,7 +4259,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="genDocCommentInput">{locale === "fr" ? "Commentaire de classement" : "Filing Comment"}</Label>
+            <Label htmlFor="genDocCommentInput">
+              {locale === "fr" ? "Commentaire de classement" : "Filing Comment"}
+            </Label>
             <Input
               id="genDocCommentInput"
               value={genDocComment}
@@ -3505,8 +4278,13 @@ export function MatterDetailClient({
             >
               {locale === "fr" ? "Annuler" : "Cancel"}
             </Button>
-            <Button type="submit" disabled={isPending || isLoadingPreview || !selectedTemplateId}>
-              {locale === "fr" ? "Générer et classer dans le dossier" : "Generate & File in Matter"}
+            <Button
+              type="submit"
+              disabled={isPending || isLoadingPreview || !selectedTemplateId}
+            >
+              {locale === "fr"
+                ? "Générer et classer dans le dossier"
+                : "Generate & File in Matter"}
             </Button>
           </div>
         </form>
@@ -3527,7 +4305,9 @@ export function MatterDetailClient({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="tTitle">{locale === "fr" ? "Intitulé de la tâche *" : "Task Title *"}</Label>
+            <Label htmlFor="tTitle">
+              {locale === "fr" ? "Intitulé de la tâche *" : "Task Title *"}
+            </Label>
             <Input
               id="tTitle"
               value={taskTitle}
@@ -3538,7 +4318,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="tAssignee">{locale === "fr" ? "Collaborateur assigné" : "Assignee"}</Label>
+            <Label htmlFor="tAssignee">
+              {locale === "fr" ? "Collaborateur assigné" : "Assignee"}
+            </Label>
             <select
               id="tAssignee"
               value={taskAssigneeId}
@@ -3555,7 +4337,9 @@ export function MatterDetailClient({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="tPriority">{locale === "fr" ? "Priorité" : "Priority"}</Label>
+              <Label htmlFor="tPriority">
+                {locale === "fr" ? "Priorité" : "Priority"}
+              </Label>
               <select
                 id="tPriority"
                 value={taskPriority}
@@ -3570,7 +4354,9 @@ export function MatterDetailClient({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="tDue">{locale === "fr" ? "Date d'échéance" : "Due Date"}</Label>
+              <Label htmlFor="tDue">
+                {locale === "fr" ? "Date d'échéance" : "Due Date"}
+              </Label>
               <Input
                 id="tDue"
                 type="date"
@@ -3615,7 +4401,11 @@ export function MatterDetailClient({
       <SidePanel
         open={isAddCommOpen}
         onOpenChange={setIsAddCommOpen}
-        title={locale === "fr" ? "Consigner un échange / correspondance" : "Log Communication"}
+        title={
+          locale === "fr"
+            ? "Consigner un échange / correspondance"
+            : "Log Communication"
+        }
         subtitle={matter.title}
       >
         <form onSubmit={handleCreateCommunication} className="space-y-4">
@@ -3627,7 +4417,9 @@ export function MatterDetailClient({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="commChannelSelect">{locale === "fr" ? "Canal de communication" : "Channel"}</Label>
+              <Label htmlFor="commChannelSelect">
+                {locale === "fr" ? "Canal de communication" : "Channel"}
+              </Label>
               <select
                 id="commChannelSelect"
                 value={commChannel}
@@ -3645,22 +4437,32 @@ export function MatterDetailClient({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="commDirSelect">{locale === "fr" ? "Sens" : "Direction"}</Label>
+              <Label htmlFor="commDirSelect">
+                {locale === "fr" ? "Sens" : "Direction"}
+              </Label>
               <select
                 id="commDirSelect"
                 value={commDirection}
                 onChange={(e) => setCommDirection(e.target.value)}
                 className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <option value="OUTBOUND">{locale === "fr" ? "Sortant (du cabinet)" : "Outbound"}</option>
-                <option value="INBOUND">{locale === "fr" ? "Entrant (vers le cabinet)" : "Inbound"}</option>
-                <option value="INTERNAL">{locale === "fr" ? "Note interne" : "Internal"}</option>
+                <option value="OUTBOUND">
+                  {locale === "fr" ? "Sortant (du cabinet)" : "Outbound"}
+                </option>
+                <option value="INBOUND">
+                  {locale === "fr" ? "Entrant (vers le cabinet)" : "Inbound"}
+                </option>
+                <option value="INTERNAL">
+                  {locale === "fr" ? "Note interne" : "Internal"}
+                </option>
               </select>
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="commSubject">{locale === "fr" ? "Objet de la communication *" : "Subject *"}</Label>
+            <Label htmlFor="commSubject">
+              {locale === "fr" ? "Objet de la communication *" : "Subject *"}
+            </Label>
             <Input
               id="commSubject"
               value={commSubject}
@@ -3671,7 +4473,11 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="commBody">{locale === "fr" ? "Résumé des échanges / Contenu" : "Content / Summary"}</Label>
+            <Label htmlFor="commBody">
+              {locale === "fr"
+                ? "Résumé des échanges / Contenu"
+                : "Content / Summary"}
+            </Label>
             <textarea
               id="commBody"
               rows={4}
@@ -3683,14 +4489,20 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="commDocSelect">{locale === "fr" ? "Document attaché (optionnel)" : "Attached Document"}</Label>
+            <Label htmlFor="commDocSelect">
+              {locale === "fr"
+                ? "Document attaché (optionnel)"
+                : "Attached Document"}
+            </Label>
             <select
               id="commDocSelect"
               value={commDocumentId}
               onChange={(e) => setCommDocumentId(e.target.value)}
               className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
             >
-              <option value="">{locale === "fr" ? "— Aucun document rattaché —" : "— None —"}</option>
+              <option value="">
+                {locale === "fr" ? "— Aucun document rattaché —" : "— None —"}
+              </option>
               {matter.documents?.map((d: any) => (
                 <option key={d.id} value={d.id}>
                   {d.title || d.filename}
@@ -3700,7 +4512,9 @@ export function MatterDetailClient({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="commDate">{locale === "fr" ? "Date et heure de l'échange" : "Date & Time"}</Label>
+            <Label htmlFor="commDate">
+              {locale === "fr" ? "Date et heure de l'échange" : "Date & Time"}
+            </Label>
             <Input
               id="commDate"
               type="datetime-local"
@@ -3728,7 +4542,11 @@ export function MatterDetailClient({
       <SidePanel
         open={isAddHoldOpen}
         onOpenChange={setIsAddHoldOpen}
-        title={locale === "fr" ? "Poser un gel conservatoire (Règle BR-15)" : "Place Legal Hold"}
+        title={
+          locale === "fr"
+            ? "Poser un gel conservatoire (Règle BR-15)"
+            : "Place Legal Hold"
+        }
         subtitle={matter.title}
       >
         <form onSubmit={handlePlaceHold} className="space-y-4">
@@ -3739,14 +4557,22 @@ export function MatterDetailClient({
           )}
 
           <div className="p-3 rounded-lg border border-rose-500/30 bg-rose-500/5 text-xs text-rose-900 dark:text-rose-200">
-            <strong>{locale === "fr" ? "Effet juridique strict :" : "Strict Legal Effect:"}</strong>{" "}
+            <strong>
+              {locale === "fr"
+                ? "Effet juridique strict :"
+                : "Strict Legal Effect:"}
+            </strong>{" "}
             {locale === "fr"
               ? "La pose d'un gel conservatoire bloque immédiatement toute tentative de destruction ou de purge de ce dossier et de ses documents jusqu'à levée expresse par un Associé."
               : "A legal hold immediately and strictly blocks any destruction or purge of this matter."}
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="holdReasonInput">{locale === "fr" ? "Motif légal ou judiciaire du gel *" : "Legal Reason *"}</Label>
+            <Label htmlFor="holdReasonInput">
+              {locale === "fr"
+                ? "Motif légal ou judiciaire du gel *"
+                : "Legal Reason *"}
+            </Label>
             <textarea
               id="holdReasonInput"
               rows={4}
@@ -3766,12 +4592,496 @@ export function MatterDetailClient({
             >
               {locale === "fr" ? "Annuler" : "Cancel"}
             </Button>
-            <Button type="submit" disabled={isPending} className="bg-rose-600 hover:bg-rose-700 text-white">
+            <Button
+              type="submit"
+              disabled={isPending}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
               <Lock className="h-3.5 w-3.5 mr-1" />
-              {locale === "fr" ? "Activer le gel conservatoire" : "Activate Legal Hold"}
+              {locale === "fr"
+                ? "Activer le gel conservatoire"
+                : "Activate Legal Hold"}
             </Button>
           </div>
         </form>
+      </SidePanel>
+
+      {/* Import Email Drawer (INT-04 / RFC 822) */}
+      <SidePanel
+        open={isImportEmailOpen}
+        onOpenChange={setIsImportEmailOpen}
+        title={
+          locale === "fr" ? "Importer un e-mail (.eml)" : "Import Email (.eml)"
+        }
+        subtitle={matter.title}
+      >
+        <form onSubmit={handleExecuteImportEmail} className="space-y-4">
+          {emlError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {emlError}
+            </div>
+          )}
+
+          <div className="p-3 rounded-lg border border-primary/20 bg-primary/5 text-xs text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">
+              {locale === "fr"
+                ? "Archivage probant d'e-mails (INT-04)"
+                : "Certified Email Archiving (INT-04)"}
+            </p>
+            <p>
+              {locale === "fr"
+                ? "Importez un fichier standard .eml (RFC 822/5322). L'e-mail sera scellé dans le registre des communications, et ses pièces jointes optionnellement extraites dans la GED du dossier."
+                : "Import a standard .eml file. The email will be logged in the communications registry and its attachments extracted."}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="emlFileInput">
+              {locale === "fr" ? "Fichier .eml *" : "E-mail file (.eml) *"}
+            </Label>
+            <Input
+              id="emlFileInput"
+              type="file"
+              accept=".eml,message/rfc822"
+              onChange={handleEmlFileChange}
+              required
+            />
+          </div>
+
+          {isAnalyzingEml && (
+            <div className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+              <Clock className="h-4 w-4 animate-spin text-primary" />
+              <span>
+                {locale === "fr"
+                  ? "Analyse du message RFC 822..."
+                  : "Parsing RFC 822 message..."}
+              </span>
+            </div>
+          )}
+
+          {emlPreview && (
+            <div className="space-y-3 rounded-lg border border-border bg-card p-3 text-xs">
+              <div className="font-semibold text-foreground border-b border-border/60 pb-1.5">
+                {locale === "fr" ? "Aperçu de l'e-mail" : "Email Preview"}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-muted-foreground">
+                <div>
+                  <span className="font-medium text-foreground">
+                    {locale === "fr" ? "De : " : "From: "}
+                  </span>
+                  {emlPreview.from || "—"}
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">
+                    {locale === "fr" ? "À : " : "To: "}
+                  </span>
+                  {emlPreview.to?.join(", ") || "—"}
+                </div>
+              </div>
+              <div>
+                <span className="font-medium text-foreground">
+                  {locale === "fr" ? "Objet : " : "Subject: "}
+                </span>
+                <span className="font-mono text-foreground">
+                  {emlPreview.subject || "Sans objet"}
+                </span>
+              </div>
+              {emlPreview.date && (
+                <div>
+                  <span className="font-medium text-foreground">
+                    {locale === "fr" ? "Date d'envoi : " : "Sent Date: "}
+                  </span>
+                  <span>
+                    {new Date(emlPreview.date).toLocaleString(
+                      locale === "en" ? "en-US" : "fr-FR",
+                    )}
+                  </span>
+                </div>
+              )}
+              {emlPreview.attachments && emlPreview.attachments.length > 0 && (
+                <div className="pt-2 border-t border-border/40">
+                  <span className="font-medium text-foreground">
+                    {locale === "fr"
+                      ? `Pièces jointes détectées (${emlPreview.attachments.length}) :`
+                      : `Detected Attachments (${emlPreview.attachments.length}):`}
+                  </span>
+                  <ul className="mt-1 space-y-1 list-disc list-inside text-muted-foreground">
+                    {emlPreview.attachments.map((att: any, idx: number) => (
+                      <li key={idx}>
+                        {att.filename} ({(att.sizeBytes / 1024).toFixed(1)} Ko)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="emlDirSelect">
+                {locale === "fr" ? "Sens de l'échange" : "Direction"}
+              </Label>
+              <select
+                id="emlDirSelect"
+                value={emlDirection}
+                onChange={(e) => setEmlDirection(e.target.value as any)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="INBOUND">
+                  {locale === "fr" ? "Entrant (vers le cabinet)" : "Inbound"}
+                </option>
+                <option value="OUTBOUND">
+                  {locale === "fr" ? "Sortant (du cabinet)" : "Outbound"}
+                </option>
+                <option value="INTERNAL">
+                  {locale === "fr" ? "Note interne" : "Internal"}
+                </option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="emlPartySelect">
+                {locale === "fr"
+                  ? "Partie concernée (optionnel)"
+                  : "Party (optional)"}
+              </Label>
+              <select
+                id="emlPartySelect"
+                value={emlPartyId}
+                onChange={(e) => setEmlPartyId(e.target.value)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="">
+                  {locale === "fr" ? "— Aucune sélection —" : "— None —"}
+                </option>
+                {matter.parties?.map((mp: any) => (
+                  <option key={mp.party?.id || mp.id} value={mp.party?.id}>
+                    {mp.party?.displayName || mp.party?.name || "Partie"} (
+                    {mp.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 pt-1">
+            <input
+              type="checkbox"
+              id="emlSaveAttCheck"
+              checked={emlSaveAttachments}
+              onChange={(e) => setEmlSaveAttachments(e.target.checked)}
+              className="h-4 w-4 rounded border-input text-primary focus:ring-primary"
+            />
+            <label
+              htmlFor="emlSaveAttCheck"
+              className="text-xs text-foreground cursor-pointer"
+            >
+              {locale === "fr"
+                ? "Extraire et enregistrer automatiquement les pièces jointes dans la GED du dossier"
+                : "Extract and store attachments in matter document management"}
+            </label>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="emlComment">
+              {locale === "fr"
+                ? "Note interne / Contexte (optionnel)"
+                : "Internal Note"}
+            </Label>
+            <textarea
+              id="emlComment"
+              rows={2}
+              value={emlComment}
+              onChange={(e) => setEmlComment(e.target.value)}
+              placeholder="ex: Transmis par Me Dupont suite à l'audience de référé."
+              className="w-full rounded-md border border-input bg-background p-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <div className="pt-3 flex justify-end gap-2 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsImportEmailOpen(false);
+                setEmlFile(null);
+                setEmlPreview(null);
+                setEmlError(null);
+              }}
+            >
+              {locale === "fr" ? "Annuler" : "Cancel"}
+            </Button>
+            <Button
+              type="submit"
+              disabled={isPending || !emlFile || isAnalyzingEml}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <Mail className="h-3.5 w-3.5 mr-1" />
+              {locale === "fr" ? "Associer au dossier" : "Attach to Matter"}
+            </Button>
+          </div>
+        </form>
+      </SidePanel>
+
+      {/* Electronic Signature & Visa Circuit Drawer (INT-06 / Loi n° 2024/017 & OHADA) */}
+      <SidePanel
+        open={isVisaDrawerOpen}
+        onOpenChange={setIsVisaDrawerOpen}
+        title={
+          locale === "fr"
+            ? "Circuit de visa & Signature électronique probante"
+            : "Visa & E-Signature Circuit"
+        }
+        subtitle={
+          selectedDocForVisa?.title
+            ? `${selectedDocForVisa.title} (v${selectedVersionForVisa?.versionNumber || 1})`
+            : matter.title
+        }
+      >
+        <div className="space-y-5">
+          {visaError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {visaError}
+            </div>
+          )}
+
+          {visaSuccess && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-800 dark:text-emerald-300">
+              {visaSuccess}
+            </div>
+          )}
+
+          {/* Legal Notice Loi n° 2024/017 */}
+          <div className="p-3.5 rounded-lg border border-primary/20 bg-primary/5 text-xs text-muted-foreground space-y-1.5">
+            <div className="flex items-center gap-1.5 font-semibold text-foreground">
+              <Scale className="h-4 w-4 text-primary" />
+              <span>
+                {locale === "fr"
+                  ? "Cadre Légal & Probant (Loi n° 2024/017 & OHADA)"
+                  : "Legal & Probative Framework"}
+              </span>
+            </div>
+            <p>
+              {locale === "fr"
+                ? "Conformément à la Loi camerounaise n° 2024/017 régissant le commerce et les communications électroniques et à l'Acte uniforme OHADA, cette signature scelle l'empreinte cryptographique SHA-256 du document et génère un jeton d'intégrité probant et inaltérable opposable en justice."
+                : "In compliance with Cameroon Law No. 2024/017 and OHADA uniform acts, this digital signature seals the document's SHA-256 fingerprint with a probative HMAC cryptographic token."}
+            </p>
+          </div>
+
+          {/* Document Fingerprint Info */}
+          {selectedVersionForVisa && (
+            <div className="p-3 rounded-lg border border-border bg-card space-y-1.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-muted-foreground">
+                  {locale === "fr"
+                    ? "Version de l'acte :"
+                    : "Document Version:"}
+                </span>
+                <Badge variant="outline" className="font-mono">
+                  v{selectedVersionForVisa.versionNumber}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-muted-foreground">
+                  {locale === "fr" ? "Statut actuel :" : "Current Status:"}
+                </span>
+                <Badge
+                  className={
+                    selectedVersionForVisa.status === "VALIDATED"
+                      ? "bg-emerald-600/10 text-emerald-700"
+                      : "bg-muted text-muted-foreground"
+                  }
+                >
+                  {selectedVersionForVisa.status === "VALIDATED"
+                    ? "Validé juridiquement"
+                    : "Projet"}
+                </Badge>
+              </div>
+              <div className="pt-1.5 border-t border-border/50">
+                <span className="font-medium text-muted-foreground block mb-0.5">
+                  {locale === "fr"
+                    ? "Empreinte cryptographique (SHA-256) :"
+                    : "SHA-256 Fingerprint:"}
+                </span>
+                <span className="font-mono text-[11px] text-foreground break-all bg-muted/40 p-1.5 rounded block">
+                  {selectedVersionForVisa.sha256 || "—"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Visa History Trail */}
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
+              {locale === "fr"
+                ? "Piste d'audit des visas & signatures"
+                : "Visas & Signatures Audit Trail"}
+            </h3>
+
+            {isLoadingVisaTrail ? (
+              <div className="py-4 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                <Clock className="h-4 w-4 animate-spin text-primary" />
+                <span>
+                  {locale === "fr"
+                    ? "Chargement des visas..."
+                    : "Loading visas..."}
+                </span>
+              </div>
+            ) : visaTrail.length === 0 ? (
+              <div className="p-4 text-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                {locale === "fr"
+                  ? "Aucun visa enregistré pour cette version."
+                  : "No visas recorded for this version."}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {visaTrail.map((v: any) => (
+                  <div
+                    key={v.id}
+                    className="p-3 rounded-lg border border-border bg-card text-xs space-y-1.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-medium text-foreground">
+                        <User className="h-3.5 w-3.5 text-primary" />
+                        <span>{v.signatory?.name || "Signataire"}</span>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-normal"
+                        >
+                          {v.role === "PARTNER"
+                            ? "Associé"
+                            : v.role === "SIGNATORY"
+                              ? "Signataire"
+                              : "Revue"}
+                        </Badge>
+                      </div>
+                      <Badge
+                        className={
+                          v.status === "APPROVED"
+                            ? "bg-emerald-600/10 text-emerald-700 border-emerald-600/20"
+                            : v.status === "REJECTED"
+                              ? "bg-destructive/10 text-destructive border-destructive/20"
+                              : "bg-amber-600/10 text-amber-700 border-amber-600/20"
+                        }
+                      >
+                        {v.status === "APPROVED"
+                          ? "Signé / Approuvé"
+                          : v.status === "REJECTED"
+                            ? "Rejeté"
+                            : "En attente"}
+                      </Badge>
+                    </div>
+
+                    {v.comment && (
+                      <p className="text-muted-foreground italic text-[11px] bg-muted/20 p-1.5 rounded">
+                        &laquo; {v.comment} &raquo;
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
+                      <span>
+                        {v.signedAt
+                          ? new Date(v.signedAt).toLocaleString(
+                              locale === "en" ? "en-US" : "fr-FR",
+                            )
+                          : "En attente d'apposition"}
+                      </span>
+                      {v.signatureSeal && (
+                        <span
+                          className="font-mono text-primary font-medium"
+                          title={v.signatureSeal}
+                        >
+                          Sceau: {v.signatureSeal.slice(0, 16)}...
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Sign / Approve Form */}
+          <form
+            onSubmit={handleExecuteSignVisa}
+            className="space-y-4 pt-3 border-t border-border"
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="visaRoleSelect">
+                {locale === "fr" ? "Qualité du signataire" : "Signatory Role"}
+              </Label>
+              <select
+                id="visaRoleSelect"
+                value={visaRole}
+                onChange={(e) => setVisaRole(e.target.value as any)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="REVIEWER">
+                  {locale === "fr"
+                    ? "Avis / Revue préalable (Collaborateur)"
+                    : "Reviewer"}
+                </option>
+                <option value="SIGNATORY">
+                  {locale === "fr"
+                    ? "Signataire habilité (Avocat instrumentaire)"
+                    : "Signatory"}
+                </option>
+                {isPartner && (
+                  <option value="PARTNER">
+                    {locale === "fr"
+                      ? "Associé validateur (Approbation souveraine)"
+                      : "Partner"}
+                  </option>
+                )}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="visaComment">
+                {locale === "fr"
+                  ? "Mention légale / Commentaire *"
+                  : "Comment *"}
+              </Label>
+              <Input
+                id="visaComment"
+                value={visaComment}
+                onChange={(e) => setVisaComment(e.target.value)}
+                placeholder="ex: Lu et approuvé. Bon pour signification et notification."
+                required
+              />
+            </div>
+
+            <div className="rounded-lg border border-border bg-muted/30 p-2.5 text-[11px] text-muted-foreground flex items-start gap-2">
+              <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <span>
+                {locale === "fr"
+                  ? "En signant cet acte, j'atteste sur l'honneur l'exactitude des informations et consens à la fixation irréversible de l'empreinte numérique."
+                  : "By signing this deed, I certify the accuracy of the information and consent to digital sealing."}
+              </span>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsVisaDrawerOpen(false)}
+              >
+                {locale === "fr" ? "Fermer" : "Close"}
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending || !selectedVersionForVisa}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                <FileCheck className="h-3.5 w-3.5 mr-1" />
+                {locale === "fr"
+                  ? "Signer et sceller l'acte"
+                  : "Sign & Seal Document"}
+              </Button>
+            </div>
+          </form>
+        </div>
       </SidePanel>
 
       {/* Archive Confirm Modal */}
@@ -3784,7 +5094,9 @@ export function MatterDetailClient({
             ? "Le dossier sera retiré des listes courantes et basculé en statut archivé conformément aux règles déontologiques."
             : "The matter will be removed from active lists and archived."
         }
-        confirmLabel={locale === "fr" ? "Confirmer l'archivage" : "Confirm archive"}
+        confirmLabel={
+          locale === "fr" ? "Confirmer l'archivage" : "Confirm archive"
+        }
         cancelLabel={locale === "fr" ? "Annuler" : "Cancel"}
         destructive={true}
         onConfirm={async () => {

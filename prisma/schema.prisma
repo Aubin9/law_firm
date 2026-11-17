@@ -160,6 +160,18 @@ enum DocumentStatus {
   VALIDATED
 }
 
+enum VisaStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VisaRole {
+  REVIEWER
+  SIGNATORY
+  PARTNER
+}
+
 enum ScanStatus {
   PENDING
   CLEAN
@@ -396,6 +408,7 @@ model User {
   aiReviews              AiSuggestion[]             @relation("AiReviewer")
   transferApprovals      ExternalTransferApproval[]
   reportedIncidents      Incident[]
+  documentVisas          DocumentVisa[]
 
   @@index([status])
   @@index([roleId])
@@ -679,6 +692,7 @@ model Matter {
   workflowStep         WorkflowStep?   @relation(fields: [workflowStepId], references: [id])
   priority             Priority        @default(NORMAL)
   confidentiality      Confidentiality @default(STANDARD)
+  aiEnabled            Boolean         @default(false)
   leadLawyerId         String
   leadLawyer           User            @relation("MatterLead", fields: [leadLawyerId], references: [id])
   createdById          String
@@ -1047,8 +1061,30 @@ model DocumentVersion {
   validatedBy   User?          @relation("VersionValidator", fields: [validatedById], references: [id])
   validatedAt   DateTime?
   createdAt     DateTime       @default(now())
+  visas         DocumentVisa[]
 
   @@unique([documentId, versionNumber])
+}
+
+// Probative Electronic Signature & Internal Visa Circuit (INT-06 / Loi n° 2024/017 / OHADA)
+model DocumentVisa {
+  id                String          @id @default(uuid())
+  documentVersionId String
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  signatoryId       String
+  signatory         User            @relation(fields: [signatoryId], references: [id])
+  role              VisaRole        @default(SIGNATORY)
+  status            VisaStatus      @default(PENDING)
+  comment           String?
+  signedAt          DateTime?
+  sha256Digest      String
+  signatureSeal     String?
+  ipAddress         String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([documentVersionId])
+  @@index([signatoryId])
 }
 
 // Template of expected documents by matter category (completeness checks).

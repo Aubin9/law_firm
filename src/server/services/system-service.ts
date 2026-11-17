@@ -46,6 +46,21 @@ const CANONICAL_FLAGS = [
     enabled: false,
     description: "Synchronisation externe du calendrier (iCal / RFC 5545) (INT-03).",
   },
+  {
+    key: "email.association.enabled",
+    enabled: false,
+    description: "Association et archivage probant d'e-mails .eml aux dossiers (INT-04).",
+  },
+  {
+    key: "reversibility.export.enabled",
+    enabled: false,
+    description: "Export complet et réversibilité des dossiers au format ZIP (INT-07 / NF-12).",
+  },
+  {
+    key: "esignature.enabled",
+    enabled: false,
+    description: "Circuit de visa interne et signature électronique probante (INT-06 / Loi n° 2024/017).",
+  },
 ];
 
 /**
