@@ -409,6 +409,9 @@ model User {
   transferApprovals      ExternalTransferApproval[]
   reportedIncidents      Incident[]
   documentVisas          DocumentVisa[]
+  devices                UserDevice[]               @relation("UserDevices")
+  revokedDevices         UserDevice[]               @relation("DeviceRevokedBy")
+  createdLegalTexts      LegalText[]                @relation("LegalTextCreator")
 
   @@index([status])
   @@index([roleId])
@@ -1643,3 +1646,92 @@ model ClientPortalMatterAccess {
   @@unique([accountId, matterId])
   @@index([matterId])
 }
+
+// -----------------------------------------------------------------------------
+// V4 EXTENSIONS: Mobile Devices & Legal Library (Step 29, EXT-02, EXT-04)
+// -----------------------------------------------------------------------------
+
+model UserDevice {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation("UserDevices", fields: [userId], references: [id], onDelete: Cascade)
+  deviceId     String       @unique
+  deviceName   String
+  userAgent    String
+  lastIp       String
+  lastSeenAt   DateTime     @default(now())
+  isTrusted    Boolean      @default(true)
+  revokedAt    DateTime?
+  revokedById  String?
+  revokedBy    User?        @relation("DeviceRevokedBy", fields: [revokedById], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([deviceId])
+}
+
+enum LegalJurisdiction {
+  CAMEROON
+  OHADA
+  CEMAC
+  INTERNATIONAL
+}
+
+enum LegalTextCategory {
+  CODE
+  STATUTE
+  DECREE
+  UNIFORM_ACT
+  REGULATION
+  CASE_LAW
+  INTERNAL_TEMPLATE
+}
+
+enum LegalTextStatus {
+  IN_FORCE
+  AMENDED
+  REPEALED
+  DRAFT
+}
+
+model LegalText {
+  id            String            @id @default(cuid())
+  code          String            @unique
+  title         String
+  shortTitle    String?
+  jurisdiction  LegalJurisdiction
+  category      LegalTextCategory
+  status        LegalTextStatus   @default(IN_FORCE)
+  enactmentDate DateTime?
+  inForceDate   DateTime?
+  gazetteRef    String?
+  description   String?
+  sourceUrl     String?
+  articles      LegalArticle[]
+  createdById   String?
+  createdBy     User?             @relation("LegalTextCreator", fields: [createdById], references: [id])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([jurisdiction, category])
+  @@index([status])
+}
+
+model LegalArticle {
+  id            String          @id @default(cuid())
+  legalTextId   String
+  legalText     LegalText       @relation(fields: [legalTextId], references: [id], onDelete: Cascade)
+  articleNumber String
+  orderIndex    Int             @default(0)
+  title         String?
+  content       String          @db.Text
+  status        LegalTextStatus @default(IN_FORCE)
+  keywords      String[]        @default([])
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([legalTextId, orderIndex])
+  @@index([articleNumber])
+}
+

@@ -2,6 +2,7 @@ import React from "react";
 import { getServerSession } from "@/server/auth/session";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app/app-shell";
+import { PwaRegister } from "@/components/pwa/pwa-register";
 
 export default async function AppLayout({
   children,
@@ -43,6 +44,7 @@ export default async function AppLayout({
       <div className="p-4 sm:p-6 lg:p-8">
         {children}
       </div>
+      <PwaRegister />
     </AppShell>
   );
 }

@@ -33,6 +33,8 @@ import {
   LogOut,
   Sparkles,
   Check,
+  Smartphone,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -43,6 +45,7 @@ import {
 } from "@/server/actions/notification-actions";
 import { getActiveGrantsForUserAction } from "@/server/actions/access-grant-actions";
 import { globalSearchAction } from "@/server/actions/search-actions";
+import { OfflineSyncIndicator } from "@/components/offline/offline-sync-indicator";
 import type { GlobalSearchResult } from "@/server/services/search-service";
 
 export interface NavItem {
@@ -89,6 +92,13 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         href: "/calendar",
         icon: CalendarDays,
       },
+      {
+        key: "mobile",
+        labelFr: "Palais Mobile",
+        labelEn: "Mobile Court",
+        href: "/mobile",
+        icon: Smartphone,
+      },
     ],
   },
   {
@@ -131,6 +141,13 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
         labelEn: "Documents",
         href: "/documents",
         icon: FileText,
+      },
+      {
+        key: "library",
+        labelFr: "Bibliothèque",
+        labelEn: "Legal Library",
+        href: "/library",
+        icon: BookOpen,
       },
     ],
   },
@@ -812,6 +829,9 @@ export function AppShell({
                 </div>
               )}
             </div>
+
+            {/* Offline Sync & Network Indicator (EXT-03) */}
+            <OfflineSyncIndicator locale={locale} />
 
             {/* Notifications Bell */}
             <div ref={notificationsRef} className="relative">

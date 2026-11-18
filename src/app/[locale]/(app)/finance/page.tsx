@@ -110,6 +110,7 @@ export default async function FinancePage({
 
   const serializedAgreements = feeAgreements.map((fa) => ({
     id: fa.id,
+    matterId: fa.matterId,
     title: fa.title,
     type: fa.type,
     amount: fa.amount ? Number(fa.amount) : null,
@@ -123,6 +124,7 @@ export default async function FinancePage({
 
   const serializedFunds = fundEntries.map((fe) => ({
     id: fe.id,
+    matterId: fe.matterId,
     type: fe.type,
     amount: Number(fe.amount),
     currency: fe.currency,

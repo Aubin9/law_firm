@@ -1,14 +1,20 @@
-import { processEventReminders, processOverdueTasks } from "@/server/services/notification-service";
+import {
+  processEventReminders,
+  processOverdueTasks,
+  processOverdueInvoices,
+} from "@/server/services/notification-service";
 import { checkMissingBackupsJob } from "@/server/services/backup-service";
+import { scanPendingDocumentVersionsJob } from "@/server/storage/antivirus";
 
 // Background worker process (npm run worker)
 async function startWorker() {
   console.log("👷 Background worker process started (Law Practice Management Platform)...");
 
-  // Scheduled periodic scanner for reminders and tasks (every 60 seconds)
+  // Scheduled periodic scanner for reminders, tasks, invoices, quarantine scans, and backup checks
   const runScanners = async () => {
     try {
       const now = new Date();
+
       const remindersResult = await processEventReminders(now);
       if (remindersResult.processedCount > 0) {
         console.log(`⏰ [Worker] Processed ${remindersResult.processedCount} event reminder(s).`);
@@ -19,7 +25,18 @@ async function startWorker() {
         console.log(`📋 [Worker] Processed ${overdueResult.notifiedCount} overdue task notification(s).`);
       }
 
-      // Check backup freshness (Step 20)
+      const overdueInvoices = await processOverdueInvoices(now);
+      if (overdueInvoices.notifiedCount > 0) {
+        console.log(`💳 [Worker] Processed ${overdueInvoices.notifiedCount} overdue invoice notification(s).`);
+      }
+
+      const avScan = await scanPendingDocumentVersionsJob();
+      if (avScan.scannedCount > 0) {
+        console.log(
+          `🛡️ [Worker] Scanned ${avScan.scannedCount} quarantined document(s) (Clean: ${avScan.cleanCount}, Infected: ${avScan.infectedCount}).`
+        );
+      }
+
       const backupCheck = await checkMissingBackupsJob();
       if (backupCheck.alertRaised) {
         console.warn("⚠️ [Worker] Missing daily backup alert raised (RPO violation).");
@@ -29,10 +46,7 @@ async function startWorker() {
     }
   };
 
-  // Run on startup
   await runScanners();
-
-  // Periodic interval (every 60s)
   setInterval(runScanners, 60_000);
 }
 

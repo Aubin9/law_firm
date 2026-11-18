@@ -212,6 +212,7 @@ export async function getMatterById(id: string, session: AppSession) {
           party: {
             include: {
               contacts: true,
+              portalAccount: true,
             },
           },
         },

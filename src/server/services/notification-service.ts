@@ -194,3 +194,65 @@ export async function processOverdueTasks(targetNow: Date = new Date()) {
   return { notifiedCount };
 }
 
+/**
+ * Scans for overdue unpaid invoices and notifies the matter lead lawyer.
+ */
+export async function processOverdueInvoices(targetNow: Date = new Date()) {
+  const overdueCandidates = await db.invoice.findMany({
+    where: {
+      issuedAt: { not: null },
+      cancelledAt: null,
+      dueAt: { lt: targetNow },
+    },
+    include: {
+      matter: { select: { id: true, reference: true, title: true, leadLawyerId: true } },
+      payments: { where: { status: "VALIDATED" } },
+    },
+    take: 50,
+  });
+
+  let notifiedCount = 0;
+
+  for (const inv of overdueCandidates) {
+    const total = Number(inv.total);
+    const paid = inv.payments.reduce((acc, p) => acc + Number(p.amount), 0);
+    const remaining = total - paid;
+    if (remaining <= 0) continue;
+
+    const targetUserId = inv.matter?.leadLawyerId || inv.createdById;
+    if (!targetUserId) continue;
+
+    const existingNotif = await db.notification.findFirst({
+      where: {
+        userId: targetUserId,
+        type: "invoice.overdue",
+        payload: {
+          path: ["invoiceId"],
+          equals: inv.id,
+        },
+        readAt: null,
+      },
+    });
+
+    if (!existingNotif) {
+      await db.notification.create({
+        data: {
+          userId: targetUserId,
+          type: "invoice.overdue",
+          payload: {
+            invoiceId: inv.id,
+            invoiceNumber: inv.number,
+            remainingDue: remaining,
+            currency: inv.currency,
+            dueAt: inv.dueAt?.toISOString(),
+            matterReference: inv.matter?.reference || null,
+          },
+        },
+      });
+      notifiedCount++;
+    }
+  }
+
+  return { notifiedCount };
+}
+

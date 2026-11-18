@@ -34,7 +34,7 @@ import {
 } from "@/server/actions/system-actions";
 import { runRestoreTestSimulationAction } from "@/server/actions/backup-actions";
 import { toggleReversibilityFlagAction } from "@/server/actions/reversibility-actions";
-import { toggleAiFlagAction } from "@/server/actions/ai-actions";
+import { toggleAiFlagAction, recordExternalTransferApprovalAction } from "@/server/actions/ai-actions";
 import { togglePortalFlagAction } from "@/server/actions/portal-actions";
 import {
   toggleDriveSyncFlagAction,
@@ -252,6 +252,29 @@ export function SystemClient({
         }
       } catch (err: any) {
         setErrorMsg(err?.message || "Erreur lors du basculement du drapeau IA.");
+      }
+    });
+  };
+
+  const handleRecordOpenAiApproval = async () => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    startTransition(async () => {
+      try {
+        const res = await recordExternalTransferApprovalAction({
+          provider: "OPENAI" as any,
+          purpose: "Assistance à l'analyse et à la rédaction juridique pseudonymisée",
+          dataCategories: "Actes et conclusions pseudonymisés (dossiers STANDARD uniquement)",
+          legalReview: "Revue de conformité validée au titre de la Loi camerounaise n° 2024/017.",
+        });
+        if (res.success) {
+          setSuccessMsg("Revue juridique et approbation de transfert externe (OpenAI) consignées au registre.");
+          refreshOverview();
+        } else {
+          setErrorMsg(res.error);
+        }
+      } catch (err: any) {
+        setErrorMsg(err?.message || "Échec d'enregistrement de l'approbation.");
       }
     });
   };
@@ -861,7 +884,17 @@ export function SystemClient({
               </div>
 
               {(currentUserRole === "PARTNER" || currentUserRole === "TECHNICAL_ADMIN") && (
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {currentUserRole === "PARTNER" && (
+                    <button
+                      onClick={handleRecordOpenAiApproval}
+                      disabled={isPending}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-purple-300 bg-purple-50 text-purple-900 hover:bg-purple-100 transition"
+                    >
+                      <FileCheck className="h-3.5 w-3.5" />
+                      Consigner l&apos;approbation (Loi 2024/017)
+                    </button>
+                  )}
                   {isAiEnabled ? (
                     <button
                       onClick={() => handleToggleAiFlag(false)}

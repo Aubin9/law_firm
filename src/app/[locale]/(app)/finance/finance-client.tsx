@@ -30,15 +30,20 @@ import {
 } from "lucide-react";
 import {
   createInvoiceAction,
+  submitInvoiceForValidationAction,
   validateInvoiceAction,
+  cancelInvoiceAction,
 } from "@/server/actions/invoice-actions";
 import {
   recordPaymentAction,
   validatePaymentAction,
   rejectPaymentAction,
   recordClientFundEntryAction,
+  validateClientFundEntryAction,
+  createFeeAgreementAction,
+  signFeeAgreementAction,
 } from "@/server/actions/finance-actions";
-import { PaymentMethod, FundEntryType } from "@prisma/client";
+import { PaymentMethod, FundEntryType, FeeAgreementType } from "@prisma/client";
 
 export interface SerializedInvoiceItem {
   id: string;
@@ -64,6 +69,7 @@ export interface SerializedInvoiceItem {
 
 export interface SerializedAgreementItem {
   id: string;
+  matterId: string;
   title: string;
   type: string;
   amount: number | null;
@@ -77,6 +83,7 @@ export interface SerializedAgreementItem {
 
 export interface SerializedFundItem {
   id: string;
+  matterId: string;
   type: string;
   amount: number;
   currency: string;
@@ -253,6 +260,81 @@ export function FinanceClient({
   const handleValidateInvoice = async (invId: string) => {
     startTransition(async () => {
       const res = await validateInvoiceAction(invId);
+      if (!res.success) alert(res.error);
+      else router.refresh();
+    });
+  };
+
+  const handleSubmitInvoiceForValidation = async (invId: string) => {
+    startTransition(async () => {
+      const res = await submitInvoiceForValidationAction(invId);
+      if (!res.success) alert(res.error);
+      else router.refresh();
+    });
+  };
+
+  const handleCancelInvoice = async (invId: string) => {
+    const reason = prompt(
+      locale === "fr"
+        ? "Motif d'annulation de la facture (obligatoire pour l'audit) :"
+        : "Cancellation reason:"
+    );
+    if (!reason || !reason.trim()) return;
+    startTransition(async () => {
+      const res = await cancelInvoiceAction(invId, reason.trim());
+      if (!res.success) alert(res.error);
+      else router.refresh();
+    });
+  };
+
+  const handleValidateCarpa = async (fe: SerializedFundItem) => {
+    startTransition(async () => {
+      const res = await validateClientFundEntryAction(fe.id, fe.matterId);
+      if (!res.success) alert(res.error);
+      else router.refresh();
+    });
+  };
+
+  // --- Fee Agreements Drawer State & Handlers ---
+  const [isCreateAgreementOpen, setIsCreateAgreementOpen] = useState(false);
+  const [agreementMatterId, setAgreementMatterId] = useState(availableMatters[0]?.id || "");
+  const [agreementTitle, setAgreementTitle] = useState("");
+  const [agreementType, setAgreementType] = useState<FeeAgreementType>(FeeAgreementType.FIXED);
+  const [agreementAmount, setAgreementAmount] = useState<number>(500000);
+  const [agreementTerms, setAgreementTerms] = useState("");
+  const [agreementError, setAgreementError] = useState<string | null>(null);
+
+  const handleCreateAgreement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const mat = availableMatters.find((m) => m.id === agreementMatterId);
+    if (!mat || !mat.clientPartyId) {
+      setAgreementError("Sélectionnez un dossier avec un client associé.");
+      return;
+    }
+    setAgreementError(null);
+    startTransition(async () => {
+      const res = await createFeeAgreementAction({
+        matterId: mat.id,
+        partyId: mat.clientPartyId,
+        title: agreementTitle,
+        type: agreementType,
+        amount: agreementAmount,
+        terms: agreementTerms || null,
+      });
+      if (!res.success) {
+        setAgreementError(res.error || "Erreur de création");
+      } else {
+        setIsCreateAgreementOpen(false);
+        setAgreementTitle("");
+        setAgreementTerms("");
+        router.refresh();
+      }
+    });
+  };
+
+  const handleSignAgreement = async (fa: SerializedAgreementItem) => {
+    startTransition(async () => {
+      const res = await signFeeAgreementAction(fa.id, null, fa.matterId);
       if (!res.success) alert(res.error);
       else router.refresh();
     });
@@ -558,6 +640,18 @@ export function FinanceClient({
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {inv.workflowKey === "DRAFT" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSubmitInvoiceForValidation(inv.id)}
+                              disabled={isPending}
+                              className="h-7 text-[11px] border-amber-500/40 text-amber-700 hover:bg-amber-50"
+                            >
+                              {locale === "fr" ? "Soumettre" : "Submit"}
+                            </Button>
+                          )}
+
                           {inv.workflowKey === "TO_VALIDATE" && isAccountantOrPartner && (
                             <Button
                               size="sm"
@@ -580,6 +674,19 @@ export function FinanceClient({
                             >
                               <CreditCard className="h-3 w-3 mr-1" />
                               {locale === "fr" ? "Régler" : "Pay"}
+                            </Button>
+                          )}
+
+                          {inv.financialStatus !== "CANCELLED" && inv.paidAmount === 0 && isAccountantOrPartner && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleCancelInvoice(inv.id)}
+                              disabled={isPending}
+                              className="h-7 text-[11px] text-rose-600 border-rose-200 hover:bg-rose-50"
+                              title="Annuler cette facture"
+                            >
+                              <X className="h-3 w-3" />
                             </Button>
                           )}
                         </div>
@@ -706,64 +813,102 @@ export function FinanceClient({
 
       {/* Tab 3: Fee Agreements */}
       {activeTab === "agreements" && (
-        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-border bg-muted/40 uppercase tracking-wider text-muted-foreground font-semibold">
-                <tr>
-                  <th className="py-3 px-4">{locale === "fr" ? "Titre / Objet" : "Title"}</th>
-                  <th className="py-3 px-4">{locale === "fr" ? "Client" : "Client"}</th>
-                  <th className="py-3 px-4">{locale === "fr" ? "Dossier" : "Matter"}</th>
-                  <th className="py-3 px-4">{locale === "fr" ? "Type" : "Type"}</th>
-                  <th className="py-3 px-4">{locale === "fr" ? "Montant Prévu" : "Agreed Amount"}</th>
-                  <th className="py-3 px-4">{locale === "fr" ? "Statut" : "Status"}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {feeAgreements.map((fa) => (
-                  <tr key={fa.id} className="hover:bg-muted/30 transition">
-                    <td className="py-3 px-4 font-semibold text-foreground">
-                      {fa.title}
-                    </td>
-                    <td className="py-3 px-4 text-muted-foreground">
-                      {fa.clientName}
-                    </td>
-                    <td className="py-3 px-4 font-mono font-semibold text-primary">
-                      {fa.matterReference}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge variant="outline" className="text-[10px]">
-                        {fa.type}
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4 font-mono font-semibold">
-                      {fa.amount ? formatMoney(fa.amount, fa.currency) : "—"}
-                    </td>
-                    <td className="py-3 px-4">
-                      {fa.signedAt ? (
-                        <Badge className="bg-emerald-600 text-white text-[10px]">
-                          {locale === "fr" ? "Signée" : "Signed"}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-[10px]">
-                          {fa.status}
-                        </Badge>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-foreground">
+                {locale === "fr" ? "Conventions d'Honoraires" : "Fee Agreements"}
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {locale === "fr"
+                  ? "Gestion contractuelle des forfaits, taux horaires et honoraires de résultat."
+                  : "Contractual tracking of fixed, hourly, and success fee agreements."}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setIsCreateAgreementOpen(true)}
+              className="gap-1.5 text-xs"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {locale === "fr" ? "Nouvelle convention" : "New Agreement"}
+            </Button>
+          </div>
 
-                {feeAgreements.length === 0 && (
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-border bg-muted/40 uppercase tracking-wider text-muted-foreground font-semibold">
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-xs text-muted-foreground">
-                      {locale === "fr"
-                        ? "Aucune convention d'honoraires enregistrée."
-                        : "No fee agreements recorded."}
-                    </td>
+                    <th className="py-3 px-4">{locale === "fr" ? "Titre / Objet" : "Title"}</th>
+                    <th className="py-3 px-4">{locale === "fr" ? "Client" : "Client"}</th>
+                    <th className="py-3 px-4">{locale === "fr" ? "Dossier" : "Matter"}</th>
+                    <th className="py-3 px-4">{locale === "fr" ? "Type" : "Type"}</th>
+                    <th className="py-3 px-4">{locale === "fr" ? "Montant Prévu" : "Agreed Amount"}</th>
+                    <th className="py-3 px-4">{locale === "fr" ? "Statut" : "Status"}</th>
+                    <th className="py-3 px-4 text-right">{locale === "fr" ? "Action" : "Action"}</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {feeAgreements.map((fa) => (
+                    <tr key={fa.id} className="hover:bg-muted/30 transition">
+                      <td className="py-3 px-4 font-semibold text-foreground">
+                        {fa.title}
+                      </td>
+                      <td className="py-3 px-4 text-muted-foreground">
+                        {fa.clientName}
+                      </td>
+                      <td className="py-3 px-4 font-mono font-semibold text-primary">
+                        {fa.matterReference}
+                      </td>
+                      <td className="py-3 px-4">
+                        <Badge variant="outline" className="text-[10px]">
+                          {fa.type}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4 font-mono font-semibold">
+                        {fa.amount ? formatMoney(fa.amount, fa.currency) : "—"}
+                      </td>
+                      <td className="py-3 px-4">
+                        {fa.signedAt ? (
+                          <Badge className="bg-emerald-600 text-white text-[10px]">
+                            {locale === "fr" ? "Signée" : "Signed"}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">
+                            {fa.status}
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {!fa.signedAt && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSignAgreement(fa)}
+                            disabled={isPending}
+                            className="h-7 text-[11px] border-emerald-500/40 text-emerald-700 hover:bg-emerald-50"
+                          >
+                            <Check className="h-3 w-3 mr-1" />
+                            {locale === "fr" ? "Marquer signée" : "Mark Signed"}
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {feeAgreements.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-xs text-muted-foreground">
+                        {locale === "fr"
+                          ? "Aucune convention d'honoraires enregistrée."
+                          : "No fee agreements recorded."}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -840,15 +985,31 @@ export function FinanceClient({
                         {formatMoney(fe.amount, fe.currency)}
                       </td>
                       <td className="py-3 px-4">
-                        {fe.isValidated ? (
-                          <Badge className="bg-emerald-600 text-white text-[10px]">
-                            {locale === "fr" ? "Audité & Validé" : "Validated"}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[10px] text-amber-700 bg-amber-50 border-amber-200">
-                            {locale === "fr" ? "En attente visa" : "Pending"}
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {fe.isValidated ? (
+                            <Badge className="bg-emerald-600 text-white text-[10px]">
+                              {locale === "fr" ? "Audité & Validé" : "Validated"}
+                            </Badge>
+                          ) : (
+                            <>
+                              <Badge variant="outline" className="text-[10px] text-amber-700 bg-amber-50 border-amber-200">
+                                {locale === "fr" ? "En attente visa" : "Pending"}
+                              </Badge>
+                              {isAccountantOrPartner && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleValidateCarpa(fe)}
+                                  disabled={isPending}
+                                  className="h-6 px-2 text-[10px] border-emerald-500/40 text-emerald-700 hover:bg-emerald-50"
+                                >
+                                  <Check className="h-3 w-3 mr-1" />
+                                  {locale === "fr" ? "Valider" : "Validate"}
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1172,6 +1333,101 @@ export function FinanceClient({
             </Button>
             <Button type="submit" disabled={isPending}>
               {locale === "fr" ? "Consigner le mouvement" : "Save Entry"}
+            </Button>
+          </div>
+        </form>
+      </SidePanel>
+
+      {/* --- SidePanel: Create Fee Agreement --- */}
+      <SidePanel
+        open={isCreateAgreementOpen}
+        onOpenChange={setIsCreateAgreementOpen}
+        title={locale === "fr" ? "Nouvelle convention d'honoraires" : "New Fee Agreement"}
+        subtitle={locale === "fr" ? "Encadrement des honoraires (FIN-01)" : "Fee agreement setup"}
+      >
+        <form onSubmit={handleCreateAgreement} className="space-y-4">
+          {agreementError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {agreementError}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="agrMatterSelect">{locale === "fr" ? "Dossier concerné *" : "Matter *"}</Label>
+            <select
+              id="agrMatterSelect"
+              value={agreementMatterId}
+              onChange={(e) => setAgreementMatterId(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              required
+            >
+              {availableMatters.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.reference} - {m.title} ({m.clientName})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="agrTitleInput">{locale === "fr" ? "Objet de la convention *" : "Title *"}</Label>
+            <Input
+              id="agrTitleInput"
+              value={agreementTitle}
+              onChange={(e) => setAgreementTitle(e.target.value)}
+              placeholder="ex: Convention d'honoraires - Contentieux TPI Douala"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="agrTypeSelect">{locale === "fr" ? "Modalité" : "Fee Type"}</Label>
+              <select
+                id="agrTypeSelect"
+                value={agreementType}
+                onChange={(e) => setAgreementType(e.target.value as FeeAgreementType)}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="FIXED">Forfait fixe</option>
+                <option value="HOURLY">Taux horaire</option>
+                <option value="RETAINER">Abonnement / Provision</option>
+                <option value="CONTINGENCY">Honoraire de résultat</option>
+                <option value="HYBRID">Mixte</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="agrAmountInput">{locale === "fr" ? "Montant (XAF)" : "Amount (XAF)"}</Label>
+              <Input
+                id="agrAmountInput"
+                type="number"
+                min={0}
+                step={5000}
+                value={agreementAmount}
+                onChange={(e) => setAgreementAmount(Number(e.target.value))}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="agrTermsInput">{locale === "fr" ? "Conditions & échéancier" : "Terms"}</Label>
+            <textarea
+              id="agrTermsInput"
+              rows={3}
+              value={agreementTerms}
+              onChange={(e) => setAgreementTerms(e.target.value)}
+              placeholder="ex: 50% à la signature, 50% à la mise en délibéré."
+              className="w-full rounded-md border border-input bg-background p-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <div className="pt-4 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setIsCreateAgreementOpen(false)}>
+              {locale === "fr" ? "Annuler" : "Cancel"}
+            </Button>
+            <Button type="submit" disabled={isPending}>
+              {locale === "fr" ? "Créer la convention" : "Create Agreement"}
             </Button>
           </div>
         </form>

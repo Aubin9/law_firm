@@ -1243,7 +1243,7 @@ async function main() {
   }[] = [
     {
       id: "usr_partner_01",
-      email: "associe@gmail.com",
+      email: "associe.demo@gmail.com",
       name: "Me Martin EKANI",
       roleKey: "PARTNER",
       locale: "FR",

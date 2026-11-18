@@ -91,8 +91,15 @@ import {
 } from "@/server/actions/mission-procedure-actions";
 import {
   uploadDocumentAction,
+  addDocumentVersionAction,
   validateDocumentVersionAction,
 } from "@/server/actions/document-actions";
+import {
+  toggleMatterPortalAction,
+  inviteClientToPortalAction,
+  revokePortalAccountAction,
+  toggleDocumentShareAction,
+} from "@/server/actions/portal-actions";
 import {
   listDocumentTemplatesAction,
   getTemplatePreviewAction,
@@ -365,6 +372,25 @@ export function MatterDetailClient({
   const [aiSuccess, setAiSuccess] = useState<string | null>(null);
   const [aiRejectReason, setAiRejectReason] = useState<string>("");
   const [isRejectingAi, setIsRejectingAi] = useState<boolean>(false);
+
+  // Client Portal V4 & Document Versioning state
+  const [matterPortalEnabled, setMatterPortalEnabled] = useState<boolean>(
+    matter.portalEnabled ?? false
+  );
+  const [portalInvitePartyId, setPortalInvitePartyId] = useState<string>(
+    matter.parties?.[0]?.party?.id || ""
+  );
+  const [portalInviteEmail, setPortalInviteEmail] = useState<string>(
+    matter.parties?.[0]?.party?.email || ""
+  );
+  const [generatedPortalToken, setGeneratedPortalToken] = useState<string | null>(null);
+  const [portalFeedback, setPortalFeedback] = useState<string | null>(null);
+
+  const [isAddVersionOpen, setIsAddVersionOpen] = useState(false);
+  const [selectedDocForNewVersion, setSelectedDocForNewVersion] = useState<any | null>(null);
+  const [newVersionFile, setNewVersionFile] = useState<File | null>(null);
+  const [newVersionComment, setNewVersionComment] = useState<string>("");
+  const [newVersionError, setNewVersionError] = useState<string | null>(null);
 
   // Task & Note state
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -909,6 +935,91 @@ export function MatterDetailClient({
         alert(res.error || "Erreur lors de la validation juridique");
       } else {
         router.refresh();
+      }
+    });
+  };
+
+  const handleToggleMatterPortal = async (enabled: boolean) => {
+    setPortalFeedback(null);
+    startTransition(async () => {
+      const res = await toggleMatterPortalAction(matter.id, enabled);
+      if (res.success) {
+        setMatterPortalEnabled(enabled);
+        router.refresh();
+      } else {
+        setPortalFeedback(res.error || "Erreur portail");
+      }
+    });
+  };
+
+  const handleInviteClientToPortal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPortalFeedback(null);
+    setGeneratedPortalToken(null);
+    startTransition(async () => {
+      const res = await inviteClientToPortalAction({
+        partyId: portalInvitePartyId,
+        matterId: matter.id,
+        email: portalInviteEmail,
+      });
+      if (res.success) {
+        setMatterPortalEnabled(true);
+        if (res.activationToken) {
+          setGeneratedPortalToken(res.activationToken);
+        }
+        setPortalFeedback(`Accès portail accordé pour ${res.email}.`);
+        router.refresh();
+      } else {
+        setPortalFeedback(res.error || "Échec de l'invitation");
+      }
+    });
+  };
+
+  const handleRevokePortalAccount = async (accountId: string) => {
+    setPortalFeedback(null);
+    startTransition(async () => {
+      const res = await revokePortalAccountAction(accountId, matter.id);
+      if (res.success) {
+        setPortalFeedback("Compte portail client révoqué immédiatement.");
+        router.refresh();
+      } else {
+        setPortalFeedback(res.error || "Échec de révocation");
+      }
+    });
+  };
+
+  const handleToggleDocumentShare = async (documentId: string, shared: boolean) => {
+    startTransition(async () => {
+      const res = await toggleDocumentShareAction(documentId, shared, matter.id);
+      if (!res.success) {
+        alert(res.error || "Erreur de partage client");
+      } else {
+        router.refresh();
+      }
+    });
+  };
+
+  const handleAddDocumentVersion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDocForNewVersion || !newVersionFile) return;
+    setNewVersionError(null);
+
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.append("documentId", selectedDocForNewVersion.id);
+      fd.append("matterId", matter.id);
+      fd.append("file", newVersionFile);
+      if (newVersionComment) fd.append("comment", newVersionComment);
+
+      const res = await addDocumentVersionAction(fd);
+      if (res.success) {
+        setIsAddVersionOpen(false);
+        setSelectedDocForNewVersion(null);
+        setNewVersionFile(null);
+        setNewVersionComment("");
+        router.refresh();
+      } else {
+        setNewVersionError(res.error || "Erreur lors de l'ajout de version");
       }
     });
   };
@@ -1819,6 +1930,129 @@ export function MatterDetailClient({
                 </div>
               )}
             </div>
+
+            {/* Client Portal V4 Governance Card (EXT-01 / docs/PORTAL_DESIGN.md) */}
+            <div className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-blue-600" />
+                  <span>{locale === "fr" ? "Portail Client Sécurisé (V4)" : "Client Portal (V4)"}</span>
+                </div>
+                <Badge className={matterPortalEnabled ? "bg-blue-100 text-blue-800 border-blue-200" : "bg-muted text-muted-foreground"}>
+                  {matterPortalEnabled ? (locale === "fr" ? "Actif" : "Active") : (locale === "fr" ? "Fermé" : "Closed")}
+                </Badge>
+              </div>
+
+              <p className="text-muted-foreground text-[11px]">
+                {locale === "fr"
+                  ? "Royaume d'authentification isolé : le client invité ne voit que les pièces validées marquées 'Partagé' et les notes 'Partageable'."
+                  : "Isolated client realm: invited clients only see shared validated documents and shareable notes."}
+              </p>
+
+              {(isPartner || isLead) && (
+                <div className="space-y-3 pt-2 border-t border-border/60">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-muted-foreground">
+                      {locale === "fr" ? "Accès portail du dossier" : "Matter portal switch"}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant={matterPortalEnabled ? "outline" : "primary"}
+                      onClick={() => handleToggleMatterPortal(!matterPortalEnabled)}
+                      disabled={isPending}
+                      className="h-7 px-2.5 text-xs"
+                    >
+                      {matterPortalEnabled ? (locale === "fr" ? "Fermer l'accès" : "Close") : (locale === "fr" ? "Ouvrir l'accès" : "Open")}
+                    </Button>
+                  </div>
+
+                  {matter.parties && matter.parties.length > 0 && (
+                    <form onSubmit={handleInviteClientToPortal} className="space-y-2 pt-2 border-t border-border/40">
+                      <span className="font-semibold text-foreground block text-[11px]">
+                        {locale === "fr" ? "Inviter une partie cliente au portail" : "Invite client party"}
+                      </span>
+                      <select
+                        value={portalInvitePartyId}
+                        onChange={(e) => {
+                          const pid = e.target.value;
+                          setPortalInvitePartyId(pid);
+                          const found = matter.parties.find((mp: any) => mp.party?.id === pid);
+                          if (found?.party?.email) setPortalInviteEmail(found.party.email);
+                        }}
+                        className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                      >
+                        {matter.parties.map((mp: any) => (
+                          <option key={mp.party?.id || mp.id} value={mp.party?.id}>
+                            {mp.party?.displayName} ({mp.role})
+                          </option>
+                        ))}
+                      </select>
+                      <Input
+                        type="email"
+                        required
+                        value={portalInviteEmail}
+                        onChange={(e) => setPortalInviteEmail(e.target.value)}
+                        placeholder="email-client@exemple.cm"
+                        className="h-8 text-xs"
+                      />
+                      <Button type="submit" size="sm" disabled={isPending} className="w-full h-7 text-xs">
+                        {locale === "fr" ? "Générer une invitation portail" : "Send Portal Invite"}
+                      </Button>
+                    </form>
+                  )}
+
+                  {portalFeedback && (
+                    <div className="p-2 rounded bg-muted text-[11px] text-foreground">
+                      {portalFeedback}
+                    </div>
+                  )}
+
+                  {generatedPortalToken && (
+                    <div className="p-2.5 rounded-lg border border-blue-300 bg-blue-50/70 text-[11px] space-y-1">
+                      <div className="font-semibold text-blue-900">
+                        {locale === "fr" ? "Jeton d'activation à usage unique (48h) :" : "One-time Activation Token (48h):"}
+                      </div>
+                      <code className="block break-all font-mono text-[10px] bg-white p-1.5 rounded border">
+                        {generatedPortalToken}
+                      </code>
+                    </div>
+                  )}
+
+                  {/* Active Portal Accounts */}
+                  {matter.parties?.some((mp: any) => mp.party?.portalAccount) && (
+                    <div className="space-y-1.5 pt-2 border-t border-border/40">
+                      <span className="font-semibold text-[11px] text-muted-foreground block">
+                        {locale === "fr" ? "Comptes portail rattachés :" : "Linked Portal Accounts:"}
+                      </span>
+                      {matter.parties
+                        .filter((mp: any) => mp.party?.portalAccount)
+                        .map((mp: any) => {
+                          const acc = mp.party.portalAccount;
+                          return (
+                            <div key={acc.id} className="flex items-center justify-between gap-2 p-2 rounded border border-border bg-background">
+                              <div className="truncate">
+                                <div className="font-medium text-foreground truncate">{acc.email}</div>
+                                <div className="text-[10px] text-muted-foreground">{acc.status}</div>
+                              </div>
+                              {acc.status !== "REVOKED" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRevokePortalAccount(acc.id)}
+                                  disabled={isPending}
+                                  className="h-6 px-2 text-[10px] text-destructive border-destructive/30"
+                                >
+                                  {locale === "fr" ? "Révoquer" : "Revoke"}
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2591,6 +2825,48 @@ export function MatterDetailClient({
 
                         <td className="px-5 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            {canEdit && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedDocForNewVersion(doc);
+                                  setNewVersionError(null);
+                                  setIsAddVersionOpen(true);
+                                }}
+                                className="h-8 gap-1 text-xs"
+                                title="Verser une nouvelle version (v2, v3...) de ce document"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                {locale === "fr" ? "+ Version" : "+ Version"}
+                              </Button>
+                            )}
+
+                            {canEdit && isValidated && isClean && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleToggleDocumentShare(doc.id, !doc.sharedWithClient)
+                                }
+                                className={`h-8 gap-1 text-xs ${
+                                  doc.sharedWithClient
+                                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                                    : ""
+                                }`}
+                                title="Autoriser ou retirer la visibilité sur le Portail Client V4"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                {doc.sharedWithClient
+                                  ? locale === "fr"
+                                    ? "Partagé client"
+                                    : "Shared"
+                                  : locale === "fr"
+                                  ? "Partager"
+                                  : "Share"}
+                              </Button>
+                            )}
+
                             {latest && isClean && (
                               <Button
                                 size="sm"
@@ -5629,6 +5905,66 @@ export function MatterDetailClient({
             </Button>
           </div>
         </div>
+      </SidePanel>
+
+      {/* Add Document Version Drawer (DOC-02) */}
+      <SidePanel
+        open={isAddVersionOpen}
+        onOpenChange={setIsAddVersionOpen}
+        title={locale === "fr" ? "Verser une nouvelle version" : "Upload New Document Version"}
+        subtitle={selectedDocForNewVersion?.title || matter.title}
+      >
+        <form onSubmit={handleAddDocumentVersion} className="space-y-4">
+          {newVersionError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {newVersionError}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="newVersionFileInput">
+              {locale === "fr" ? "Nouveau fichier *" : "New File *"}
+            </Label>
+            <Input
+              id="newVersionFileInput"
+              type="file"
+              required
+              onChange={(e) => setNewVersionFile(e.target.files?.[0] || null)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="newVersionCommentInput">
+              {locale === "fr" ? "Note de révision / Modifications apportées" : "Version Comment"}
+            </Label>
+            <textarea
+              id="newVersionCommentInput"
+              rows={3}
+              value={newVersionComment}
+              onChange={(e) => setNewVersionComment(e.target.value)}
+              placeholder="ex: Intégration des observations de l'associé et correction du dispositif..."
+              className="w-full rounded-md border border-input bg-background p-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+
+          <div className="pt-2 flex justify-end gap-2 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAddVersionOpen(false)}
+            >
+              {locale === "fr" ? "Annuler" : "Cancel"}
+            </Button>
+            <Button
+              type="submit"
+              disabled={isPending || !newVersionFile}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              <Upload className="h-3.5 w-3.5 mr-1" />
+              {locale === "fr" ? "Enregistrer la nouvelle version" : "Save New Version"}
+            </Button>
+          </div>
+        </form>
       </SidePanel>
 
       {/* Archive Confirm Modal */}

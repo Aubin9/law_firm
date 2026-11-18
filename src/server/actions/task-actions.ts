@@ -107,7 +107,8 @@ export async function toggleChecklistItemAction(
 export async function createNoteAction(
   matterId: string,
   body: string,
-  shareable: boolean = false
+  shareable: boolean = false,
+  eventId?: string | null
 ) {
   const session = await getServerSession();
   if (!session) {
@@ -116,7 +117,7 @@ export async function createNoteAction(
 
   try {
     const note = await createNote(
-      { matterId, body, shareable },
+      { matterId, body, shareable, eventId },
       session
     );
     revalidatePath(`/matters/${matterId}`);
